@@ -1689,6 +1689,41 @@ inline fn strToBytes(arg: RocStr) RocList {
     }
 }
 
+const SmallStrNats = extern struct {
+    big_value: RocList,
+    small_a: usize,
+    small_b: usize,
+    small_c: usize,
+    is_small: bool,
+};
+
+pub fn smallStrNatsC(output: *SmallStrNats, arg: RocStr) callconv(.C) void {
+    output.* = smallStrNats(arg);
+}
+
+inline fn smallStrNats(arg: RocStr) SmallStrNats {
+    if (arg.isSmallStr()) {
+        // const data_nats = @ptrCast([*]usize, @alignCast(@alignOf(usize), arg.asU8ptr()));
+        const as_int = @ptrToInt(&arg);
+        const data_nats = @intToPtr([*]usize, as_int);
+        return SmallStrNats{
+            .is_small = true,
+            .big_value = RocList.empty(),
+            .small_a = data_nats[0],
+            .small_b = data_nats[1],
+            .small_c = data_nats[2],
+        };
+    } else {
+        return SmallStrNats{
+            .is_small = false,
+            .big_value = RocList{ .length = arg.len(), .bytes = arg.str_bytes, .capacity = arg.str_capacity },
+            .small_a = 0,
+            .small_b = 0,
+            .small_c = 0,
+        };
+    }
+}
+
 const FromUtf8Result = extern struct {
     byte_index: usize,
     string: RocStr,

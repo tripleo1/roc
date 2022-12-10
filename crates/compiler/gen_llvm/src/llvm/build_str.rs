@@ -45,6 +45,42 @@ pub(crate) fn decode_from_utf8_result<'a, 'ctx, 'env>(
     }
 }
 
+pub(crate) fn decode_from_small_str_nats_result<'a, 'ctx, 'env>(
+    env: &Env<'a, 'ctx, 'env>,
+    pointer: PointerValue<'ctx>,
+) -> StructValue<'ctx> {
+    let builder = env.builder;
+
+    let fields = match env.target_info.ptr_width() {
+        PtrWidth::Bytes4 | PtrWidth::Bytes8 => [
+            super::convert::zig_list_type(env).into(),
+            env.ptr_int().into(),
+            env.ptr_int().into(),
+            env.ptr_int().into(),
+            env.context.bool_type().into(),
+        ],
+    };
+
+    let record_type = env.context.struct_type(&fields, false);
+
+    match env.target_info.ptr_width() {
+        PtrWidth::Bytes4 | PtrWidth::Bytes8 => {
+            let result_ptr_cast = env
+                .builder
+                .build_bitcast(
+                    pointer,
+                    record_type.ptr_type(AddressSpace::Generic),
+                    "to_unnamed",
+                )
+                .into_pointer_value();
+
+            builder
+                .build_load(result_ptr_cast, "load_small_str_nats_result")
+                .into_struct_value()
+        }
+    }
+}
+
 /// Dec.toStr : Dec -> Str
 
 /// Str.equal : Str, Str -> Bool

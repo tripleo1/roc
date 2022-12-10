@@ -290,6 +290,26 @@ impl<'a> LowLevelCall<'a> {
                 backend.code_builder.i32_const(UPDATE_MODE_IMMUTABLE);
                 backend.call_host_fn_after_loading_args(bitcode::STR_FROM_UTF8_RANGE, 6, false);
             }
+            HashSmallStrNats => {
+                /*
+                Low-level op returns a struct with all the data for both Small and Big.
+                Roc AST wrapper converts this to a tag union, with app-dependent tag IDs.
+
+                    output: *SmallStrNats i32
+                    arg: RocList              i64, i32
+                */
+
+                // loads arg, start, count
+                backend.storage.load_symbols_for_call(
+                    backend.env.arena,
+                    &mut backend.code_builder,
+                    self.arguments,
+                    self.ret_symbol,
+                    &WasmLayout::new(backend.env.layout_interner, &self.ret_layout),
+                    CallConv::Zig,
+                );
+                backend.call_host_fn_after_loading_args(bitcode::STR_SMALL_STR_NATS, 2, false);
+            }
             StrTrimLeft => self.load_args_and_call_zig(backend, bitcode::STR_TRIM_LEFT),
             StrTrimRight => self.load_args_and_call_zig(backend, bitcode::STR_TRIM_RIGHT),
             StrToUtf8 => self.load_args_and_call_zig(backend, bitcode::STR_TO_UTF8),

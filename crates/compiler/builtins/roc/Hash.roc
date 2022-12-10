@@ -20,7 +20,7 @@ interface Hash
         hashList,
         hashUnordered,
     ] imports [
-        Bool.{ isEq },
+        Bool.{ Bool, isEq },
         List,
         Str,
         Num.{ U8, U16, U32, U64, U128, I8, I16, I32, I64, I128, Nat },
@@ -61,9 +61,26 @@ Hasher has
     ## accumulated hash state.
     complete : a -> U64 | a has Hasher
 
+SmallStrNats : {
+    aBigValue: List,
+    bSmallA: Nat,
+    bSmallB: Nat,
+    bSmallC: Nat,
+    cIsSmall: Bool,
+}
+
+smallStrNatsLowlevel : Str -> SmallStrNats
+
 ## Adds a string into a [Hasher] by hashing its UTF-8 bytes.
 hashStrBytes = \hasher, s ->
-    addBytes hasher (Str.toUtf8 s)
+    data = smallStrNatsLowlevel s
+    if data.cIsSmall then
+        hasher
+            |> hashNat data.bSmallA
+            |> hashNat data.bSmallB
+            |> hashNat data.bSmallC
+    else
+        addBytes hasher data.aBigValue
 
 ## Adds a list of [Hash]able elements to a [Hasher] by hashing each element.
 hashList = \hasher, lst ->

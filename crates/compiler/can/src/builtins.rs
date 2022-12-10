@@ -204,6 +204,8 @@ map_symbol_to_lowlevel_and_arity! {
     BoxExpr; BOX_BOX_FUNCTION; 1,
     UnboxExpr; BOX_UNBOX; 1,
     Unreachable; LIST_UNREACHABLE; 1,
+
+    HashSmallStrNats; HASH_SMALL_STR_NATS_LOWLEVEL; 1,
 }
 
 /// Some builtins cannot be constructed in code gen alone, and need to be defined

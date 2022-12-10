@@ -114,6 +114,7 @@ pub enum LowLevel {
     UnboxExpr,
     Dbg,
     Unreachable,
+    HashSmallStrNats,
 }
 
 macro_rules! higher_order {
@@ -320,4 +321,5 @@ map_symbol_to_lowlevel! {
     Or <= BOOL_OR,
     Not <= BOOL_NOT,
     Unreachable <= LIST_UNREACHABLE,
+    HashSmallStrNats <= HASH_SMALL_STR_NATS_LOWLEVEL,
 }

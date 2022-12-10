@@ -1527,6 +1527,7 @@ define_builtins! {
         16 HASH_HASH_STR_BYTES: "hashStrBytes"
         17 HASH_HASH_LIST: "hashList"
         18 HASH_HASH_UNORDERED: "hashUnordered"
+        19 HASH_SMALL_STR_NATS_LOWLEVEL: "smallStrNatsLowlevel"
     }
     14 JSON: "Json" => {
         0 JSON_JSON: "Json"

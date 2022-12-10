@@ -356,6 +356,36 @@ pub(crate) fn run_low_level<'a, 'ctx, 'env>(
 
             crate::llvm::build_str::decode_from_utf8_result(env, result_ptr).into()
         }
+        HashSmallStrNats => {
+            let result_type = env.module.get_struct_type("str.SmallStrNats").unwrap();
+            let result_ptr = env
+                .builder
+                .build_alloca(result_type, "alloca_small_str_nats_result");
+
+            match env.target_info.ptr_width() {
+                PtrWidth::Bytes4 => {
+                    arguments!(string);
+                    let (a, b) = pass_list_or_string_to_zig_32bit(env, string.into_struct_value());
+
+                    call_void_bitcode_fn(
+                        env,
+                        &[result_ptr.into(), a.into(), b.into()],
+                        bitcode::STR_SMALL_STR_NATS,
+                    );
+                }
+                PtrWidth::Bytes8 => {
+                    arguments!(string);
+
+                    call_void_bitcode_fn(
+                        env,
+                        &[result_ptr.into(), string.into()],
+                        bitcode::STR_SMALL_STR_NATS,
+                    );
+                }
+            }
+
+            crate::llvm::build_str::decode_from_small_str_nats_result(env, result_ptr).into()
+        }
         StrToUtf8 => {
             // Str.fromInt : Str -> List U8
             arguments!(string);
