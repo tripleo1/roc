@@ -3,16 +3,7 @@ use roc_target::TargetInfo;
 use std::ops::Index;
 use tempfile::NamedTempFile;
 
-pub const HOST_WASM: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bitcode/builtins-wasm32.o"));
-// TODO: in the future, we should use Zig's cross-compilation to generate and store these
-// for all targets, so that we can do cross-compilation!
-#[cfg(unix)]
-pub const HOST_UNIX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/bitcode/builtins-host.o"));
-#[cfg(windows)]
-pub const HOST_WINDOWS: &[u8] = include_bytes!(concat!(
-    env!("OUT_DIR"),
-    "/bitcode/builtins-windows-x86_64.obj"
-));
+pub use roc_bitcode::*;
 
 pub fn host_wasm_tempfile() -> std::io::Result<NamedTempFile> {
     let tempfile = tempfile::Builder::new()

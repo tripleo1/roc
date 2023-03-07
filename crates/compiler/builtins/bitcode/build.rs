@@ -18,8 +18,7 @@ fn main() {
 
     // "." is relative to where "build.rs" is
     // dunce can be removed once ziglang/zig#5109 is fixed
-    let build_script_dir_path = dunce::canonicalize(Path::new(".")).unwrap();
-    let bitcode_path = build_script_dir_path.join("bitcode");
+    let bitcode_path = dunce::canonicalize(Path::new(".")).unwrap();
 
     // workaround for github.com/ziglang/zig/issues/9711
     #[cfg(target_os = "macos")]
@@ -121,7 +120,7 @@ fn generate_bc_file(bitcode_path: &Path, zig_object: &str, file_name: &str) {
 
     // workaround for github.com/ziglang/zig/issues/9711
     #[cfg(target_os = "macos")]
-    let _ = fs::remove_dir_all("./bitcode/zig-cache");
+    let _ = fs::remove_dir_all("./zig-cache");
 
     let mut zig_cmd = zig();
 
@@ -135,10 +134,10 @@ fn generate_bc_file(bitcode_path: &Path, zig_object: &str, file_name: &str) {
 pub fn get_lib_dir() -> PathBuf {
     // Currently we have the OUT_DIR variable which points to `/target/debug/build/roc_builtins-*/out/`.
     // So we just need to add "/bitcode" to that.
-    let dir = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("bitcode");
+    let dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     // create dir if it does not exist
-    fs::create_dir_all(&dir).expect("Failed to make $OUT_DIR/bitcode dir.");
+    fs::create_dir_all(&dir).expect("Failed to make $OUT_DIR dir.");
 
     dir
 }
