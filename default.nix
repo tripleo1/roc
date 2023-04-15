@@ -6,7 +6,7 @@
 , pkgs ? import nixpkgsSource { }
 ,
 }:
-# we only this file to release a nix package, use flake.nix for development
+# we only use this file to release a nix package, use flake.nix for development
 let
   rustPlatform = pkgs.rustPlatform;
   llvmPkgs = pkgs.llvmPackages_13;
