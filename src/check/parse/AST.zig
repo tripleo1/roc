@@ -115,6 +115,7 @@ pub fn tokenizeDiagnosticToReport(self: *AST, diagnostic: tokenize.Diagnostic, a
         .OverClosedBrace => "OVER CLOSED BRACE",
         .MismatchedBrace => "MISMATCHED BRACE",
         .NonPrintableUnicodeInStrLiteral => "NON-PRINTABLE UNICODE IN STRING LITERAL",
+        .InvalidUtf8InSource => "INVALID UTF-8",
     };
 
     const body = switch (diagnostic.tag) {
@@ -129,6 +130,7 @@ pub fn tokenizeDiagnosticToReport(self: *AST, diagnostic: tokenize.Diagnostic, a
         .OverClosedBrace => "There are too many closing braces here.",
         .MismatchedBrace => "This brace does not match the corresponding opening brace.",
         .NonPrintableUnicodeInStrLiteral => "Non-printable Unicode characters are not allowed in string literals.",
+        .InvalidUtf8InSource => "Invalid UTF-8 encoding found in source code. Roc source files must be valid UTF-8.",
     };
 
     var report = reporting.Report.init(allocator, title, .runtime_error);
@@ -2147,11 +2149,7 @@ pub const Expr = union(enum) {
         ext: ?Expr.Idx,
         region: TokenizedRegion,
     },
-    tag: struct {
-        token: Token.Idx,
-        qualifiers: Token.Span,
-        region: TokenizedRegion,
-    },
+    tag: TagExpr,
     lambda: struct {
         args: Pattern.Span,
         body: Expr.Idx,
@@ -2591,7 +2589,14 @@ pub const RecordField = struct {
     }
 };
 
-/// TODO
+/// A tag expr
+pub const TagExpr = struct {
+    token: Token.Idx,
+    qualifiers: Token.Span,
+    region: TokenizedRegion,
+};
+
+/// An if-else expr
 pub const IfElse = struct {
     condition: Expr.Idx,
     body: Expr.Idx,
@@ -2601,7 +2606,7 @@ pub const IfElse = struct {
     pub const Span = struct { span: base.DataSpan };
 };
 
-/// TODO
+/// A match branch
 pub const MatchBranch = struct {
     pattern: Pattern.Idx,
     body: Expr.Idx,
