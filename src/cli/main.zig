@@ -1426,7 +1426,8 @@ pub fn setupSharedMemoryWithModuleEnv(allocs: *Allocators, roc_file_path: []cons
 
     // Try to find and compile platform modules
     // Extract the actual platform path from the app header to support paths like "../platform/main.roc"
-    const app_dir = std.fs.path.dirname(roc_file_path) orelse return error.InvalidAppPath;
+    // If the roc file path has no directory component (e.g., "app.roc"), use current directory
+    const app_dir = std.fs.path.dirname(roc_file_path) orelse ".";
 
     const platform_spec = try extractPlatformSpecFromApp(allocs, roc_file_path);
 
@@ -1533,7 +1534,8 @@ pub fn setupSharedMemoryWithModuleEnv(allocs: *Allocators, roc_file_path: []cons
                 // Insert the aliased name into the platform env's ident table
                 const aliased_ident = try module_env_ptr.insertIdent(base.Ident.for_text(aliased_name));
 
-                // Add to exposed_items with the same node_idx value
+                // First add to exposed items, then set node index
+                try module_env_ptr.common.exposed_items.addExposedById(shm_allocator, @bitCast(aliased_ident));
                 try module_env_ptr.common.exposed_items.setNodeIndexById(shm_allocator, @bitCast(aliased_ident), entry.value);
             }
         }
@@ -1734,8 +1736,10 @@ pub fn setupSharedMemoryWithModuleEnv(allocs: *Allocators, roc_file_path: []cons
     }
 
     // Type check with all imported modules
+    // Use the env's module_name_idx so that nominal types' origin_module matches
+    // the env's identity for method resolution at runtime
     const app_builtin_ctx: Check.BuiltinContext = .{
-        .module_name = try app_env.insertIdent(base.Ident.for_text("app")),
+        .module_name = app_env.module_name_idx,
         .bool_stmt = builtin_modules.builtin_indices.bool_type,
         .try_stmt = builtin_modules.builtin_indices.try_type,
         .str_stmt = builtin_modules.builtin_indices.str_type,
