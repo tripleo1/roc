@@ -193,7 +193,13 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
 
     for (defs_slice) |def_idx| {
         if (try extractDefEntry(gpa, module_env, def_idx, source)) |entry| {
-            try entries_list.append(gpa, entry);
+            // Skip internal Builtin functions
+            if (std.mem.eql(u8, package_name, "Builtin") and isInternalBuiltin(entry.name)) {
+                var mutable_entry = entry;
+                mutable_entry.deinit(gpa);
+            } else {
+                try entries_list.append(gpa, entry);
+            }
         }
     }
 
@@ -208,6 +214,8 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 const entry_name = module_env.getIdentText(header.relative_name);
                 // Skip if already in entries
                 if (findEntryByName(entries_list.items, entry_name)) continue;
+                // Skip internal Builtin types
+                if (std.mem.eql(u8, package_name, "Builtin") and isInternalBuiltin(entry_name)) continue;
 
                 const region = module_env.store.getStatementRegion(stmt_idx);
                 const doc_comment = try extractDocComment(gpa, source, region.start.offset);
@@ -237,6 +245,8 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 const header = module_env.store.getTypeHeader(decl.header);
                 const entry_name = module_env.getIdentText(header.relative_name);
                 if (findEntryByName(entries_list.items, entry_name)) continue;
+                // Skip internal Builtin types
+                if (std.mem.eql(u8, package_name, "Builtin") and isInternalBuiltin(entry_name)) continue;
 
                 const region = module_env.store.getStatementRegion(stmt_idx);
                 const doc_comment = try extractDocComment(gpa, source, region.start.offset);
@@ -1378,6 +1388,12 @@ fn convertModuleKind(kind: ModuleEnv.ModuleKind) DocModel.ModuleKind {
         .type_module => .type_module,
         else => .app, // deprecated_module, hosted, malformed → treat as app
     };
+}
+
+fn isInternalBuiltin(name: []const u8) bool {
+    // Filter out unsafe/internal builtin functions
+    return std.mem.endsWith(u8, name, "_unsafe") or
+           std.mem.endsWith(u8, name, "_lossy");
 }
 
 fn findEntryByName(entries: []const DocModel.DocEntry, name: []const u8) bool {

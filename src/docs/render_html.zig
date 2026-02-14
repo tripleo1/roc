@@ -109,7 +109,10 @@ fn writePackageIndex(ctx: *const RenderContext, dir: std.fs.Dir) !void {
     var bw = file.writer(&buf);
     const w = &bw.interface;
 
-    try writeHtmlHead(w, ctx.package_docs.name, "");
+    // Create descriptive title for index page
+    var title_buf: [256]u8 = undefined;
+    const title = try std.fmt.bufPrint(&title_buf, "{s} - Documentation", .{ctx.package_docs.name});
+    try writeHtmlHead(w, title, "");
     try writeBodyOpen(w);
     try renderSidebar(w, ctx, "");
 
@@ -225,7 +228,12 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
     try w.writeAll("    <nav id=\"sidebar-nav\">\n");
     try w.writeAll("        <div class=\"pkg-and-logo\">\n");
     try w.writeAll("            <a class=\"logo\" href=\"");
-    try w.writeAll(base);
+    // Use explicit path for empty base (index page)
+    if (base.len == 0) {
+        try w.writeAll(".");
+    } else {
+        try w.writeAll(base);
+    }
     try w.writeAll("\">");
     try w.writeAll(roc_logo_svg);
     try w.writeAll("</a>\n");
@@ -234,6 +242,10 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
     try w.writeAll("\">");
     try writeHtmlEscaped(w, ctx.package_docs.name);
     try w.writeAll("</a></h1>\n");
+    try w.writeAll("        </div>\n");
+
+    try w.writeAll("        <div class=\"search-container\">\n");
+    try w.writeAll("            <input type=\"search\" id=\"search-input\" placeholder=\"Search documentation...\" />\n");
     try w.writeAll("        </div>\n");
 
     try w.writeAll("        <div class=\"module-links-container\">\n");
@@ -250,7 +262,8 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
         if (is_active) try w.writeAll(" active");
         try w.writeAll("\" data-module-name=\"");
         try writeHtmlEscaped(w, mod.name);
-        try w.writeAll("\" href=\"/");
+        try w.writeAll("\" href=\"");
+        try w.writeAll(base);
         try writeHtmlEscaped(w, mod.name);
         try w.writeAll("/\">");
         try w.writeAll("<button class=\"entry-toggle\">&#9656;</button>");
@@ -554,8 +567,11 @@ fn writeTypeLink(
         try w.writeAll(".");
         try writeHtmlEscaped(w, type_name);
     } else {
-        // Cross-module link with absolute path
-        try w.writeAll("/");
+        // Cross-module link with relative path
+        // If we're in a module page (current_module is set), use "../" prefix
+        if (ctx.current_module) |_| {
+            try w.writeAll("../");
+        }
         try writeHtmlEscaped(w, target_module);
         try w.writeAll("/#");
         try writeHtmlEscaped(w, target_module);

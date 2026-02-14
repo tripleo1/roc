@@ -6923,10 +6923,13 @@ fn generateDocs(
     // If the path contains "platform", we're documenting a platform directly
     const is_documenting_platform = std.mem.indexOf(u8, module_path, "platform") != null;
 
-    // Determine package name from the first package
-    var pkg_iter = build_env.packages.iterator();
-    const first_pkg = if (pkg_iter.next()) |entry| entry.value_ptr.* else return;
-    const pkg_name = try ctx.gpa.dupe(u8, first_pkg.name);
+    // Determine the root package name from the module path
+    // Extract basename without extension (e.g., "app.roc" -> "app")
+    const basename = std.fs.path.basename(module_path);
+    const pkg_name = if (std.mem.endsWith(u8, basename, ".roc"))
+        try ctx.gpa.dupe(u8, basename[0 .. basename.len - 4])
+    else
+        try ctx.gpa.dupe(u8, basename);
 
     // Collect ModuleDocs from all compiled modules
     var module_docs_list = std.ArrayList(DocModel.ModuleDocs).empty;
