@@ -71,6 +71,7 @@ const RenderContext = struct {
     package_docs: *const DocModel.PackageDocs,
     known_modules: std.StringHashMapUnmanaged(void),
     current_module: ?[]const u8,
+    current_module_entries: ?[]const DocModel.DocEntry = null,
 
     fn init(package_docs: *const DocModel.PackageDocs, gpa: Allocator) RenderContext {
         var known = std.StringHashMapUnmanaged(void){};
@@ -81,6 +82,7 @@ const RenderContext = struct {
             .package_docs = package_docs,
             .known_modules = known,
             .current_module = null,
+            .current_module_entries = null,
         };
     }
 
@@ -119,9 +121,11 @@ pub fn renderPackageDocs(
     // Write per-module pages
     for (package_docs.modules) |*mod| {
         ctx.current_module = mod.name;
+        ctx.current_module_entries = mod.entries;
         try writeModulePage(&ctx, gpa, output_dir, mod);
     }
     ctx.current_module = null;
+    ctx.current_module_entries = null;
 }
 
 // ── Static assets ───────────────────────────────────────────────────
@@ -213,10 +217,10 @@ fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, m
         try w.writeAll("        </div>\n");
     }
 
-    // Entries
-    for (mod.entries) |*entry| {
-        try renderEntry(w, ctx, entry);
-    }
+    // Entries - render as hierarchical tree
+    const tree = try buildContentTree(gpa, mod.entries);
+    defer tree.deinit();
+    try renderEntryTree(w, ctx, tree, 0);
 
     try writeFooter(w);
     try w.writeAll("    </main>\n");
@@ -333,6 +337,150 @@ fn lessThanSidebarNode(_: void, a: *SidebarNode, b: *SidebarNode) bool {
     if (!a.is_type and b.is_type) return false;
     // Then sort alphabetically
     return std.mem.order(u8, a.name, b.name) == .lt;
+}
+
+// ── Content tree building for hierarchical main content ──
+
+fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
+    const root = try SidebarNode.init(gpa, "", "", false);
+
+    for (entries) |*entry| {
+        var current = root;
+
+        // Split entry name by dots
+        var parts = try std.ArrayList([]const u8).initCapacity(gpa, 8);
+        defer parts.deinit(gpa);
+
+        var start: usize = 0;
+        for (entry.name, 0..) |char, i| {
+            if (char == '.') {
+                try parts.append(gpa, entry.name[start..i]);
+                start = i + 1;
+            }
+        }
+        try parts.append(gpa, entry.name[start..]);
+
+        // Build path through tree
+        var path_so_far = try std.ArrayList(u8).initCapacity(gpa, 256);
+        defer path_so_far.deinit(gpa);
+
+        for (parts.items, 0..) |part, idx| {
+            if (idx > 0) try path_so_far.append(gpa, '.');
+            try path_so_far.appendSlice(gpa, part);
+
+            const is_last = (idx == parts.items.len - 1);
+
+            // Find or create child node
+            var found: ?*SidebarNode = null;
+            for (current.children.items) |child| {
+                if (std.mem.eql(u8, child.name, part)) {
+                    found = child;
+                    break;
+                }
+            }
+
+            if (found == null) {
+                const full_path = try gpa.dupe(u8, path_so_far.items);
+                const new_node = try SidebarNode.init(gpa, part, full_path, true);
+                try current.children.append(gpa, new_node);
+                found = new_node;
+            }
+
+            var node = found.?;
+
+            if (is_last) {
+                node.is_leaf = true;
+                node.is_type = (entry.kind != .value);
+                node.entry = entry;
+            }
+
+            current = node;
+        }
+    }
+
+    // Sort children at each level
+    sortSidebarNodeChildren(root);
+
+    return root;
+}
+
+fn renderEntryTree(
+    w: Writer,
+    ctx: *const RenderContext,
+    node: *const SidebarNode,
+    depth: usize,
+) !void {
+    // Skip the root node (empty name), process its children
+    if (depth == 0) {
+        for (node.children.items) |child| {
+            try renderEntryTree(w, ctx, child, depth + 1);
+        }
+        return;
+    }
+
+    // Render this node if it's a leaf entry
+    if (node.is_leaf) {
+        if (node.entry) |entry| {
+            // Determine heading level: h2 for depth 1, h3 for depth 2, h4+ for depth 3+
+            const heading_level = if (depth == 1) "h2" else if (depth == 2) "h3" else "h4";
+
+            // Determine CSS classes
+            const type_class = if (node.is_type) "entry-type" else "entry-value";
+            const name_class = if (node.is_type) "entry-name-type" else "entry-name-value";
+
+            // Render entry section
+            try w.writeAll("        <section class=\"entry ");
+            try w.writeAll(type_class);
+            try w.writeAll(" entry-depth-");
+            try w.print("{d}", .{depth - 1});
+            try w.writeAll("\">\n");
+
+            // Heading with anchor
+            const anchor_id = node.full_path;
+            try w.writeAll("            <");
+            try w.writeAll(heading_level);
+            try w.writeAll(" id=\"");
+            try writeHtmlEscaped(w, anchor_id);
+            try w.writeAll("\" class=\"entry-name ");
+            try w.writeAll(name_class);
+            try w.writeAll("\">");
+            try w.writeAll("<a href=\"#");
+            try writeHtmlEscaped(w, anchor_id);
+            try w.writeAll("\">🔗</a> ");
+
+            // Type signature
+            try w.writeAll("<code>");
+            try renderEntrySignature(w, ctx, entry);
+            try w.writeAll("</code>");
+
+            try w.writeAll("</");
+            try w.writeAll(heading_level);
+            try w.writeAll(">\n");
+
+            // Doc comment
+            if (entry.doc_comment) |doc| {
+                try w.writeAll("            <div class=\"entry-doc\">\n");
+                try renderDocComment(w, doc);
+                try w.writeAll("            </div>\n");
+            }
+
+            // Children container
+            if (node.children.items.len > 0) {
+                try w.writeAll("            <div class=\"entry-children-container\">\n");
+                for (node.children.items) |child| {
+                    try renderEntryTree(w, ctx, child, depth + 1);
+                }
+                try w.writeAll("            </div>\n");
+            }
+
+            try w.writeAll("        </section>\n");
+        }
+    } else if (node.children.items.len > 0) {
+        // Non-leaf node with children - recurse
+        for (node.children.items) |child| {
+            try renderEntryTree(w, ctx, child, depth);
+        }
+    }
 }
 
 const roc_logo_svg =
@@ -727,6 +875,39 @@ fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocT
 
 // ── Link resolution ─────────────────────────────────────────────────
 
+/// Resolve a short type name to its full path within current module
+/// For example, "Dec" -> "Num.Dec"
+fn resolveTypeNameToFullPath(
+    ctx: *const RenderContext,
+    type_name: []const u8,
+) ?[]const u8 {
+    // If it already has a dot, it's a full path
+    if (std.mem.indexOf(u8, type_name, ".") != null) {
+        return type_name;
+    }
+
+    // Search current module entries for a match
+    if (ctx.current_module_entries) |entries| {
+        for (entries) |*entry| {
+            // Check if entry.name ends with ".{type_name}"
+            // This handles cases like "Num.Dec" where type_name is "Dec"
+            if (std.mem.endsWith(u8, entry.name, type_name)) {
+                const dot_pos = entry.name.len - type_name.len;
+                if (dot_pos == 0) {
+                    // Exact match (top-level type like "Bool")
+                    return type_name;
+                } else if (dot_pos > 0 and entry.name[dot_pos - 1] == '.') {
+                    // Match after a dot (nested type like "Num.Dec")
+                    return entry.name;
+                }
+            }
+        }
+    }
+
+    // Default to original name if not found
+    return type_name;
+}
+
 /// Check whether a type reference is linkable.
 fn resolveTypeLink(
     ctx: *const RenderContext,
@@ -770,12 +951,17 @@ fn writeTypeLink(
     else
         false;
 
+    // Resolve the full path for short names (e.g., "Dec" -> "Num.Dec")
+    const full_type_name = if (is_same_module)
+        resolveTypeNameToFullPath(ctx, type_name) orelse type_name
+    else
+        type_name;
+
     if (is_same_module) {
-        // Same-page link with qualified anchor
+        // Same-page link with anchor to the entry's full_path
+        // The entry IDs are the type name path (e.g., "Num.Dec")
         try w.writeAll("#");
-        try writeHtmlEscaped(w, target_module);
-        try w.writeAll(".");
-        try writeHtmlEscaped(w, type_name);
+        try writeHtmlEscaped(w, full_type_name);
     } else {
         // Cross-module link with relative path
         // If we're in a module page (current_module is set), use "../" prefix
@@ -784,9 +970,7 @@ fn writeTypeLink(
         }
         try writeHtmlEscaped(w, target_module);
         try w.writeAll("/#");
-        try writeHtmlEscaped(w, target_module);
-        try w.writeAll(".");
-        try writeHtmlEscaped(w, type_name);
+        try writeHtmlEscaped(w, full_type_name);
     }
 }
 
