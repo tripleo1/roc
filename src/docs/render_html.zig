@@ -710,8 +710,7 @@ fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocM
                 try renderDocTypeHtml(w, ctx, sig, false);
             },
             .@"opaque" => {
-                try w.writeAll(" :: ");
-                try renderDocTypeHtml(w, ctx, sig, false);
+                try w.writeAll(" :: <span class=\"type\">&lt;hidden&gt;</span>");
             },
         }
     }
