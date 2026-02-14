@@ -73,12 +73,15 @@ table tr td {
   font-weight: normal;
   background-color: var(--violet-bg);
   color: var(--text-color);
-  width: auto;
+  width: 100%;
   margin-top: 0;
   margin-bottom: 24px;
   padding: 12px 16px;
   border-left: 4px solid var(--violet);
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
 }
 
 .entry-name strong {
@@ -382,6 +385,35 @@ footer p {
     border-left-color: rgb(from var(--violet) r g b / .60);
     color: var(--violet);
     text-decoration: none;
+}
+
+.sidebar-group {
+    margin-left: 0;
+}
+
+.sidebar-group-name {
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-block;
+    padding: 8px 16px;
+    width: calc(100% - 32px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+}
+
+.sidebar-group-name:hover {
+    color: var(--violet);
+}
+
+.sidebar-group > .sidebar-sub-entries {
+    display: none;
+    margin-left: 0;
+}
+
+.sidebar-group.expanded > .sidebar-sub-entries {
+    display: block;
 }
 
 .module-name {

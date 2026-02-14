@@ -27,6 +27,45 @@ const font_face_css =
 
 const Writer = *std.Io.Writer;
 
+/// Tree node for sidebar hierarchy
+const SidebarNode = struct {
+    name: []const u8,          // The name component at this level
+    full_path: []const u8,     // Full qualified name (allocated)
+    is_type: bool,             // Is this a type definition?
+    is_leaf: bool,             // Is this a leaf entry?
+    entry: ?*const DocModel.DocEntry,  // Reference to the actual entry (if leaf)
+    children: std.ArrayList(*SidebarNode),
+    allocator: Allocator,
+    owns_full_path: bool,      // Whether we own the full_path allocation
+
+    fn init(gpa: Allocator, name: []const u8, full_path: []const u8, owns_full_path: bool) !*SidebarNode {
+        const node = try gpa.create(SidebarNode);
+        const children = try std.ArrayList(*SidebarNode).initCapacity(gpa, 0);
+        node.* = .{
+            .name = name,
+            .full_path = full_path,
+            .is_type = false,
+            .is_leaf = false,
+            .entry = null,
+            .children = children,
+            .allocator = gpa,
+            .owns_full_path = owns_full_path,
+        };
+        return node;
+    }
+
+    fn deinit(self: *SidebarNode) void {
+        for (self.children.items) |child| {
+            child.deinit();
+        }
+        self.children.deinit(self.allocator);
+        if (self.owns_full_path) {
+            self.allocator.free(self.full_path);
+        }
+        self.allocator.destroy(self);
+    }
+};
+
 /// Context for rendering, shared across all pages.
 const RenderContext = struct {
     package_docs: *const DocModel.PackageDocs,
@@ -75,12 +114,12 @@ pub fn renderPackageDocs(
     try writeStaticAssets(output_dir);
 
     // Write package index page
-    try writePackageIndex(&ctx, output_dir);
+    try writePackageIndex(&ctx, gpa, output_dir);
 
     // Write per-module pages
     for (package_docs.modules) |*mod| {
         ctx.current_module = mod.name;
-        try writeModulePage(&ctx, output_dir, mod);
+        try writeModulePage(&ctx, gpa, output_dir, mod);
     }
     ctx.current_module = null;
 }
@@ -102,7 +141,7 @@ fn writeStaticAssets(dir: std.fs.Dir) !void {
 
 // ── Package index page ──────────────────────────────────────────────
 
-fn writePackageIndex(ctx: *const RenderContext, dir: std.fs.Dir) !void {
+fn writePackageIndex(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir) !void {
     const file = try dir.createFile("index.html", .{});
     defer file.close();
     var buf: [4096]u8 = undefined;
@@ -114,7 +153,7 @@ fn writePackageIndex(ctx: *const RenderContext, dir: std.fs.Dir) !void {
     const title = try std.fmt.bufPrint(&title_buf, "{s} - Documentation", .{ctx.package_docs.name});
     try writeHtmlHead(w, title, "");
     try writeBodyOpen(w);
-    try renderSidebar(w, ctx, "");
+    try renderSidebar(w, ctx, gpa, "");
 
     // Main content
     try w.writeAll("    <main>\n");
@@ -141,7 +180,7 @@ fn writePackageIndex(ctx: *const RenderContext, dir: std.fs.Dir) !void {
 
 // ── Module page ─────────────────────────────────────────────────────
 
-fn writeModulePage(ctx: *const RenderContext, dir: std.fs.Dir, mod: *const DocModel.ModuleDocs) !void {
+fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, mod: *const DocModel.ModuleDocs) !void {
     // Create module subdirectory
     dir.makeDir(mod.name) catch |err| switch (err) {
         error.PathAlreadyExists => {},
@@ -159,7 +198,7 @@ fn writeModulePage(ctx: *const RenderContext, dir: std.fs.Dir, mod: *const DocMo
 
     try writeHtmlHead(w, mod.name, "../");
     try writeBodyOpen(w);
-    try renderSidebar(w, ctx, "../");
+    try renderSidebar(w, ctx, gpa, "../");
 
     // Main content
     try w.writeAll("    <main>\n");
@@ -217,6 +256,85 @@ fn writeFooter(w: Writer) !void {
 
 // ── Sidebar ─────────────────────────────────────────────────────────
 
+fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
+    const root = try SidebarNode.init(gpa, "", "", false);
+
+    for (entries) |*entry| {
+        var current = root;
+
+        // Split entry name by dots
+        var parts = try std.ArrayList([]const u8).initCapacity(gpa, 8);
+        defer parts.deinit(gpa);
+
+        var start: usize = 0;
+        for (entry.name, 0..) |char, i| {
+            if (char == '.') {
+                try parts.append(gpa, entry.name[start..i]);
+                start = i + 1;
+            }
+        }
+        try parts.append(gpa, entry.name[start..]);
+
+        // Build path through tree
+        var path_so_far = try std.ArrayList(u8).initCapacity(gpa, 256);
+        defer path_so_far.deinit(gpa);
+
+        for (parts.items, 0..) |part, idx| {
+            if (idx > 0) try path_so_far.append(gpa, '.');
+            try path_so_far.appendSlice(gpa, part);
+
+            const full_path = try gpa.dupe(u8, path_so_far.items);
+            const is_last = (idx == parts.items.len - 1);
+
+            // Find or create child node
+            var found: ?*SidebarNode = null;
+            for (current.children.items) |child| {
+                if (std.mem.eql(u8, child.name, part)) {
+                    found = child;
+                    break;
+                }
+            }
+
+            if (found == null) {
+                const new_node = try SidebarNode.init(gpa, part, full_path, true);
+                try current.children.append(gpa, new_node);
+                found = new_node;
+            }
+
+            var node = found.?;
+
+            if (is_last) {
+                node.is_leaf = true;
+                node.is_type = (entry.kind != .value);
+                node.entry = entry;
+            }
+
+            current = node;
+        }
+    }
+
+    // Sort children at each level alphabetically
+    sortSidebarNodeChildren(root);
+
+    return root;
+}
+
+fn sortSidebarNodeChildren(node: *SidebarNode) void {
+    std.mem.sortUnstable(*SidebarNode, node.children.items, {}, lessThanSidebarNode);
+
+    for (node.children.items) |child| {
+        sortSidebarNodeChildren(child);
+    }
+}
+
+fn lessThanSidebarNode(_: void, a: *SidebarNode, b: *SidebarNode) bool {
+    // Types come first
+    if (a.is_type and !b.is_type) return true;
+    if (!a.is_type and b.is_type) return false;
+    // Then sort alphabetically
+    return std.mem.order(u8, a.name, b.name) == .lt;
+}
+
 const roc_logo_svg =
     \\<svg viewBox="0 -6 51 58" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="logo-link">
     \\    <title id="logo-link">Home</title>
@@ -224,7 +342,89 @@ const roc_logo_svg =
     \\</svg>
 ;
 
-fn renderSidebar(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
+fn renderSidebarTree(
+    w: Writer,
+    module_name: []const u8,
+    node: *SidebarNode,
+    depth: usize,
+) !void {
+    // Skip root node
+    if (depth > 0) {
+        if (node.children.items.len > 0) {
+            // Render as collapsible group
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("<div class=\"sidebar-group\">\n");
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("  <span class=\"sidebar-group-name\">");
+            try writeHtmlEscaped(w, node.name);
+            try w.writeAll("</span>\n");
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("  <div class=\"sidebar-sub-entries\">\n");
+
+            // Recurse for children
+            for (node.children.items) |child| {
+                try renderSidebarTree(w, module_name, child, depth + 1);
+            }
+
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("  </div>\n");
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("</div>\n");
+        } else if (node.is_leaf) {
+            // Render as link
+            try w.writeAll("                        ");
+            for (0..depth - 1) |_| {
+                try w.writeAll("  ");
+            }
+            try w.writeAll("<a href=\"/");
+            try writeHtmlEscaped(w, module_name);
+            try w.writeAll("/#");
+            try writeHtmlEscaped(w, node.full_path);
+            try w.writeAll("\">");
+            try writeHtmlEscaped(w, node.name);
+            try w.writeAll("</a>\n");
+        }
+    } else {
+        // Root node - just recurse
+        for (node.children.items) |child| {
+            try renderSidebarTree(w, module_name, child, depth + 1);
+        }
+    }
+}
+
+fn renderSidebarEntries(
+    w: Writer,
+    gpa: std.mem.Allocator,
+    module_name: []const u8,
+    entries: []const DocModel.DocEntry,
+    _depth: usize,
+) !void {
+    _ = _depth; // No longer needed
+
+    // Build tree structure
+    const tree = try buildSidebarTree(gpa, entries);
+    defer tree.deinit();
+
+    // Render tree
+    try renderSidebarTree(w, module_name, tree, 0);
+}
+
+fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []const u8) !void {
     try w.writeAll("    <nav id=\"sidebar-nav\">\n");
     try w.writeAll("        <div class=\"pkg-and-logo\">\n");
     try w.writeAll("            <a class=\"logo\" href=\"");
@@ -271,19 +471,9 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
         try writeHtmlEscaped(w, mod.name);
         try w.writeAll("</span></a>\n");
 
-        // Sub-entries
+        // Sub-entries - grouped hierarchically
         try w.writeAll("                    <div class=\"sidebar-sub-entries\">\n");
-        for (mod.entries) |entry| {
-            try w.writeAll("                        <a href=\"/");
-            try writeHtmlEscaped(w, mod.name);
-            try w.writeAll("/#");
-            try writeHtmlEscaped(w, mod.name);
-            try w.writeAll(".");
-            try writeHtmlEscaped(w, entry.name);
-            try w.writeAll("\">");
-            try writeHtmlEscaped(w, entry.name);
-            try w.writeAll("</a>\n");
-        }
+        try renderSidebarEntries(w, gpa, mod.name, mod.entries, 0);
         try w.writeAll("                    </div>\n");
         try w.writeAll("                </div>\n");
     }
@@ -299,19 +489,21 @@ fn renderEntry(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocE
     try w.writeAll("        <section>\n");
 
     // Heading with anchor
+    // Determine the anchor ID for this entry
+    // If entry.name already starts with current module, don't add it again
+    const anchor_id = if (ctx.current_module) |mod|
+        if (std.mem.startsWith(u8, entry.name, mod) and entry.name.len > mod.len and entry.name[mod.len] == '.')
+            entry.name  // Already qualified
+        else
+            entry.name  // Use as-is (or could be a nested entry)
+    else
+        entry.name;
+
     try w.writeAll("            <h3 id=\"");
-    if (ctx.current_module) |mod| {
-        try writeHtmlEscaped(w, mod);
-        try w.writeAll(".");
-    }
-    try writeHtmlEscaped(w, entry.name);
+    try writeHtmlEscaped(w, anchor_id);
     try w.writeAll("\" class=\"entry-name\">");
     try w.writeAll("<a href=\"#");
-    if (ctx.current_module) |mod| {
-        try writeHtmlEscaped(w, mod);
-        try w.writeAll(".");
-    }
-    try writeHtmlEscaped(w, entry.name);
+    try writeHtmlEscaped(w, anchor_id);
     try w.writeAll("\">&#128279;</a> ");
 
     // Type signature
@@ -344,7 +536,15 @@ fn renderEntry(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocE
 
 fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry) !void {
     try w.writeAll("<strong>");
-    try writeHtmlEscaped(w, entry.name);
+
+    // Display only the identifier (last component) of the entry name
+    // For "Builtin.Str.Utf8Problem.is_eq", display as "is_eq"
+    const display_name = if (std.mem.lastIndexOfScalar(u8, entry.name, '.')) |idx|
+        entry.name[idx + 1 ..]
+    else
+        entry.name;
+
+    try writeHtmlEscaped(w, display_name);
     try w.writeAll("</strong>");
 
     if (entry.type_signature) |sig| {
@@ -412,11 +612,21 @@ fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocT
                 try writeTypeLink(w, ctx, ref.module_path, ref.type_name);
                 try w.writeAll("\">");
                 try w.writeAll("<span class=\"type\">");
-                try writeHtmlEscaped(w, ref.type_name);
+                // Display only the last component of the type name
+                const display_name = if (std.mem.lastIndexOfScalar(u8, ref.type_name, '.')) |idx|
+                    ref.type_name[idx + 1 ..]
+                else
+                    ref.type_name;
+                try writeHtmlEscaped(w, display_name);
                 try w.writeAll("</span></a>");
             } else {
                 try w.writeAll("<span class=\"type\">");
-                try writeHtmlEscaped(w, ref.type_name);
+                // Display only the last component of the type name
+                const display_name = if (std.mem.lastIndexOfScalar(u8, ref.type_name, '.')) |idx|
+                    ref.type_name[idx + 1 ..]
+                else
+                    ref.type_name;
+                try writeHtmlEscaped(w, display_name);
                 try w.writeAll("</span>");
             }
         },

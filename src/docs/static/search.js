@@ -26,6 +26,31 @@ const setupSidebarNav = () => {
       toggleSidebarEntryActive(moduleName);
     });
   });
+
+  // Handle sidebar group toggles (for hierarchical entries)
+  document.querySelectorAll(".sidebar-group-name").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const group = el.closest(".sidebar-group");
+      if (group) {
+        group.classList.toggle("expanded");
+      }
+    });
+  });
+
+  // Auto-expand active entry's ancestors
+  const activeModule = document.querySelector(".sidebar-module-link.active");
+  if (activeModule) {
+    // Expand the active module's sub-entries
+    const subEntries = activeModule.parentElement?.querySelector(".sidebar-sub-entries");
+    if (subEntries) {
+      // Expand all parent groups within the sub-entries
+      subEntries.querySelectorAll(".sidebar-group").forEach((group) => {
+        group.classList.add("expanded");
+      });
+    }
+  }
 };
 
 const setupSearch = () => {
