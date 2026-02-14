@@ -44,7 +44,7 @@ main_for_host = main
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
     (entry
       (name "Color")
@@ -55,7 +55,7 @@ main_for_host = main
     (entry
       (name "Id")
       (kind opaque)
-      (type "Id :: " (type-ref (module "Builtin") (name "U64")))
+      (type "Id :: " (type-ref (name "U64")))
       (doc "An opaque identifier.")
     )
   )
@@ -66,7 +66,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

@@ -277,6 +277,60 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
         }
     }
 
+    // Build hierarchical structure: move methods under their parent types
+    var i: usize = 0;
+    while (i < entries_list.items.len) {
+        const entry = &entries_list.items[i];
+
+        // Check if this is a method (name contains ".")
+        if (std.mem.lastIndexOfScalar(u8, entry.name, '.')) |dot_idx| {
+            const parent_name = entry.name[0..dot_idx];
+            const method_short_name = entry.name[dot_idx + 1 ..];
+
+            // Find parent type in entries_list
+            var parent_idx_opt: ?usize = null;
+            for (entries_list.items, 0..) |*potential_parent, idx| {
+                if (std.mem.eql(u8, potential_parent.name, parent_name)) {
+                    parent_idx_opt = idx;
+                    break;
+                }
+            }
+
+            if (parent_idx_opt) |parent_idx| {
+                const parent = &entries_list.items[parent_idx];
+
+                // Duplicate the method entry with short name
+                const short_name = try gpa.dupe(u8, method_short_name);
+                errdefer gpa.free(short_name);
+
+                var method_entry = entry.*; // Copy entry
+                gpa.free(method_entry.name); // Free old qualified name
+                method_entry.name = short_name; // Use short name
+
+                // Add to parent's children
+                var new_children = std.ArrayList(DocModel.DocEntry).empty;
+
+                // Copy existing children
+                for (parent.children) |child| {
+                    try new_children.append(gpa, child);
+                }
+                // Add the new method entry
+                try new_children.append(gpa, method_entry);
+
+                // Free old children array and assign new one
+                gpa.free(parent.children);
+                parent.children = try new_children.toOwnedSlice(gpa);
+
+                // Remove from top-level list (swap with last and shrink)
+                gpa.free(entry.children); // Free empty children array
+                _ = entries_list.swapRemove(i);
+                continue; // Don't increment i, check same position again
+            }
+        }
+
+        i += 1;
+    }
+
     const entries = try entries_list.toOwnedSlice(gpa);
 
     return DocModel.ModuleDocs{
@@ -479,7 +533,7 @@ fn resolveModulePathFromBase(
     local_or_ext: TypeAnno.LocalOrExternal,
 ) []const u8 {
     return switch (local_or_ext) {
-        .builtin => "Builtin",
+        .builtin => "", // Don't expose "Builtin" module as it's an implementation detail
         .local => module_env.module_name,
         .external => |ext| blk: {
             const idx = @intFromEnum(ext.module_idx);
@@ -1376,7 +1430,11 @@ fn getDisplayName(origin_text: []const u8, ident_text: []const u8) []const u8 {
 
 /// Get the module path from the origin text.
 /// The origin_module text is the raw module path from the compiler.
+/// Returns empty string for "Builtin" since it's an implementation detail.
 fn getModulePath(origin_text: []const u8) []const u8 {
+    if (std.mem.eql(u8, origin_text, "Builtin")) {
+        return ""; // Don't expose "Builtin" module as it's an implementation detail
+    }
     return origin_text;
 }
 

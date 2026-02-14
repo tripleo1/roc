@@ -58,7 +58,7 @@ main_for_host = main
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
   (module
@@ -67,22 +67,22 @@ main_for_host = main
     (kind type_module)
     (doc "A color value.")
     (entry
-      (name "Color.red")
-      (kind value)
-      (type (fn (record) (type-ref (module "Color") (name "Color"))))
-      (doc "The red color.")
-    )
-    (entry
-      (name "Color.to_str")
-      (kind value)
-      (type (fn (type-ref (module "Color") (name "Color")) (type-ref (module "Builtin") (name "Str"))))
-      (doc "Convert a color to a string.")
-    )
-    (entry
       (name "Color")
       (kind nominal)
       (type "Color := " (tag-union (tag "Red") (tag "Green") (tag "Blue")))
       (doc "A color value.")
+      (entry
+        (name "red")
+        (kind value)
+        (type (fn (record) (type-ref (module "app.Color") (name "Color"))))
+        (doc "The red color.")
+      )
+      (entry
+        (name "to_str")
+        (kind value)
+        (type (fn (type-ref (module "app.Color") (name "Color")) (type-ref (name "Str"))))
+        (doc "Convert a color to a string.")
+      )
     )
   )
   (module
@@ -92,7 +92,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

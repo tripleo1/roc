@@ -46,19 +46,19 @@ main_for_host = main
     (entry
       (name "stringify")
       (kind value)
-      (type (where (fn (var "a") (type-ref (module "Builtin") (name "Str"))) (constraint "a" "to_str" (fn (var "a") (type-ref (module "Builtin") (name "Str"))))))
+      (type (where (fn (var "a") (type-ref (name "Str"))) (constraint "a" "to_str" (fn (var "a") (type-ref (name "Str"))))))
       (doc "Convert any value to a string.")
     )
     (entry
       (name "compare")
       (kind value)
-      (type (where (fn (var "a") (var "a") (type-ref (module "Builtin") (name "Bool"))) (constraint "a" "is_eq" (fn (var "a") (var "a") (type-ref (module "Builtin") (name "Bool"))))))
+      (type (where (fn (var "a") (var "a") (type-ref (name "Bool"))) (constraint "a" "is_eq" (fn (var "a") (var "a") (type-ref (name "Bool"))))))
       (doc "Check equality of two values.")
     )
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
   (module
@@ -68,7 +68,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

@@ -40,7 +40,7 @@ greet_for_host = greet
     (entry
       (name "greet")
       (kind value)
-      (type (fn (type-ref (module "Builtin") (name "Str")) (type-ref (module "Builtin") (name "Str"))))
+      (type (fn (type-ref (name "Str")) (type-ref (name "Str"))))
       (doc "Greets someone by name.")
     )
   )
@@ -51,7 +51,7 @@ greet_for_host = greet
     (entry
       (name "greet_for_host")
       (kind value)
-      (type (fn (type-ref (module "Builtin") (name "Str")) (type-ref (module "Builtin") (name "Str"))))
+      (type (fn (type-ref (name "Str")) (type-ref (name "Str"))))
     )
   )
 )

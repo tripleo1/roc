@@ -68,7 +68,7 @@ main_for_host = main
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
   (module
@@ -76,28 +76,28 @@ main_for_host = main
     (package "app")
     (kind type_module)
     (entry
-      (name "Geometry.unit")
-      (kind value)
-      (type (fn (record) (type-ref (module "Geometry") (name "Geometry"))))
-      (doc "A unit rectangle.")
-    )
-    (entry
-      (name "Geometry.area")
-      (kind value)
-      (type (fn (type-ref (module "Geometry") (name "Geometry")) (type-ref (module "Builtin") (name "U64"))))
-      (doc "Calculate the area of a rectangle.")
-    )
-    (entry
-      (name "Geometry.describe")
-      (kind value)
-      (type (fn (type-ref (module "Geometry") (name "Geometry")) (type-ref (module "Builtin") (name "Str"))))
-      (doc "Describe the area as a string.")
-    )
-    (entry
       (name "Geometry")
       (kind nominal)
-      (type "Geometry := " (record (field "width" (type-ref (module "Builtin") (name "U64"))) (field "height" (type-ref (module "Builtin") (name "U64")))))
+      (type "Geometry := " (record (field "width" (type-ref (name "U64"))) (field "height" (type-ref (name "U64")))))
       (doc "A rectangle with width and height.")
+      (entry
+        (name "unit")
+        (kind value)
+        (type (fn (record) (type-ref (module "app.Geometry") (name "Geometry"))))
+        (doc "A unit rectangle.")
+      )
+      (entry
+        (name "area")
+        (kind value)
+        (type (fn (type-ref (module "app.Geometry") (name "Geometry")) (type-ref (name "U64"))))
+        (doc "Calculate the area of a rectangle.")
+      )
+      (entry
+        (name "describe")
+        (kind value)
+        (type (fn (type-ref (module "app.Geometry") (name "Geometry")) (type-ref (name "Str"))))
+        (doc "Describe the area as a string.")
+      )
     )
   )
   (module
@@ -106,16 +106,16 @@ main_for_host = main
     (kind type_module)
     (doc "String display utilities.")
     (entry
-      (name "Helpers.show")
-      (kind value)
-      (type (fn (type-ref (module "Builtin") (name "U64")) (type-ref (module "Builtin") (name "Str"))))
-      (doc "Show a number as a string.")
-    )
-    (entry
       (name "Helpers")
       (kind nominal)
       (type "Helpers := " (record))
       (doc "String display utilities.")
+      (entry
+        (name "show")
+        (kind value)
+        (type (fn (type-ref (name "U64")) (type-ref (name "Str"))))
+        (doc "Show a number as a string.")
+      )
     )
   )
   (module
@@ -125,7 +125,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

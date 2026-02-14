@@ -48,7 +48,7 @@ main_for_host = main
     (entry
       (name "add")
       (kind value)
-      (type (fn (type-ref (module "Builtin") (name "U64")) (type-ref (module "Builtin") (name "U64")) (type-ref (module "Builtin") (name "U64"))))
+      (type (fn (type-ref (name "U64")) (type-ref (name "U64")) (type-ref (name "U64"))))
       (doc "Adds two numbers.")
     )
     (entry
@@ -60,7 +60,7 @@ main_for_host = main
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
       (doc "The main entry point.")
     )
   )
@@ -71,7 +71,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

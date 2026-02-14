@@ -61,24 +61,24 @@ main_for_host = main
     (package "app")
     (kind type_module)
     (entry
-      (name "Counter.new")
-      (kind value)
-      (type (fn (record) (type-ref (module "Counter") (name "Counter"))))
-    )
-    (entry
-      (name "Counter.increment")
-      (kind value)
-      (type (fn (type-ref (module "Counter") (name "Counter")) (type-ref (module "Counter") (name "Counter"))))
-    )
-    (entry
-      (name "Counter.value")
-      (kind value)
-      (type (fn (type-ref (module "Counter") (name "Counter")) (type-ref (module "Builtin") (name "U64"))))
-    )
-    (entry
       (name "Counter")
       (kind nominal)
-      (type "Counter := " (record (field "count" (type-ref (module "Builtin") (name "U64")))))
+      (type "Counter := " (record (field "count" (type-ref (name "U64")))))
+      (entry
+        (name "new")
+        (kind value)
+        (type (fn (record) (type-ref (module "app.Counter") (name "Counter"))))
+      )
+      (entry
+        (name "increment")
+        (kind value)
+        (type (fn (type-ref (module "app.Counter") (name "Counter")) (type-ref (module "app.Counter") (name "Counter"))))
+      )
+      (entry
+        (name "value")
+        (kind value)
+        (type (fn (type-ref (module "app.Counter") (name "Counter")) (type-ref (name "U64"))))
+      )
     )
   )
   (module
@@ -88,7 +88,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )

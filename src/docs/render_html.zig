@@ -311,6 +311,17 @@ fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
                 node.is_leaf = true;
                 node.is_type = (entry.kind != .value);
                 node.entry = entry;
+
+                // Also add entry's children as nested nodes
+                for (entry.children) |*child_entry| {
+                    const child_name = child_entry.name;
+                    const full_path = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ entry.name, child_name });
+                    const child_node = try SidebarNode.init(gpa, child_name, full_path, true);
+                    try node.children.append(gpa, child_node);
+                    child_node.is_leaf = true;
+                    child_node.is_type = (child_entry.kind != .value);
+                    child_node.entry = child_entry;
+                }
             }
 
             current = node;
@@ -392,6 +403,17 @@ fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
                 node.is_leaf = true;
                 node.is_type = (entry.kind != .value);
                 node.entry = entry;
+
+                // Also add entry's children as nested nodes
+                for (entry.children) |*child_entry| {
+                    const child_name = child_entry.name;
+                    const full_path = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ entry.name, child_name });
+                    const child_node = try SidebarNode.init(gpa, child_name, full_path, true);
+                    try node.children.append(gpa, child_node);
+                    child_node.is_leaf = true;
+                    child_node.is_type = (child_entry.kind != .value);
+                    child_node.entry = child_entry;
+                }
             }
 
             current = node;

@@ -287,9 +287,14 @@ pub const DocType = union(enum) {
     pub fn writeToSExpr(self: *const DocType, writer: anytype, depth: usize) !void {
         switch (self.*) {
             .type_ref => |ref| {
-                try writer.writeAll("(type-ref (module \"");
-                try writeEscaped(writer, ref.module_path);
-                try writer.writeAll("\") (name \"");
+                try writer.writeAll("(type-ref");
+                // Only include module path if it's not empty
+                if (ref.module_path.len > 0) {
+                    try writer.writeAll(" (module \"");
+                    try writeEscaped(writer, ref.module_path);
+                    try writer.writeAll("\")");
+                }
+                try writer.writeAll(" (name \"");
                 try writeEscaped(writer, ref.type_name);
                 try writer.writeAll("\"))");
             },

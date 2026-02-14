@@ -44,19 +44,19 @@ main_for_host = main
     (entry
       (name "x")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Dec")))
+      (type (type-ref (name "Dec")))
       (doc "A number.")
     )
     (entry
       (name "greeting")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
       (doc "A greeting.")
     )
     (entry
       (name "main")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
   (module
@@ -66,7 +66,7 @@ main_for_host = main
     (entry
       (name "main_for_host")
       (kind value)
-      (type (type-ref (module "Builtin") (name "Str")))
+      (type (type-ref (name "Str")))
     )
   )
 )
