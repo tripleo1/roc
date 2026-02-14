@@ -26,6 +26,20 @@
   --module-search-padding-height: 16px;
   --module-search-form-padding-width: 20px;
   --sidebar-bg-color: hsl(from var(--violet-bg) h calc(s * 1.05) calc(l * 0.95));
+
+  /* Type scale: 1.33x multiplier for clear hierarchy */
+  --font-xs: 12px;
+  --font-sm: 14px;
+  --font-base: 16px;
+  --font-lg: 21px;
+  --font-xl: 28px;
+  --font-2xl: 37px;
+
+  /* Font weights */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
 }
 
 
@@ -59,38 +73,55 @@ table tr td {
 .pkg-full-name {
   display: flex;
   align-items: center;
-  font-size: 24px;
+  font-size: var(--font-xl);
   margin: 0 8px;
-  font-weight: normal;
+  font-weight: var(--weight-normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.entry-name {
-  white-space: pre-wrap;
+/* Entry signature styling - not a heading element */
+.entry-signature {
   font-family: var(--font-mono);
-  font-size: 16px;
-  font-weight: normal;
   background-color: var(--violet-bg);
   color: var(--text-color);
   width: 100%;
-  margin-top: 0;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   padding: 12px 16px;
   border-left: 4px solid var(--violet);
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
-  align-items: baseline;
+  white-space: pre-wrap;
+  position: relative;
 }
 
-.entry-name strong {
+.entry-signature-code {
+  background: none;
+  font-size: inherit;
+  flex: 1;
+}
+
+.entry-signature-code strong {
     color: var(--text-color);
+    font-weight: var(--weight-semibold);
 }
 
-.entry-name code {
-    background: none;
+.entry-anchor {
+  visibility: hidden;
+  flex-shrink: 0;
+  display: inline-block;
+  width: 18px;
+  height: 14px;
+  color: var(--violet);
+  text-decoration: none;
+  font-size: 14px;
+  user-select: none;
+}
+
+.entry-signature:hover .entry-anchor {
+  visibility: visible;
 }
 
 .entry-name:target {
@@ -121,11 +152,12 @@ table tr td {
 /* Hierarchical entry layout */
 .entry {
     position: relative;
-    margin-bottom: 16px;
+    margin-bottom: 24px;
 }
 
 .entry-children-container {
     margin-top: 16px;
+    margin-left: 0;
 }
 
 /* Depth-specific indentation (32px per level) */
@@ -155,25 +187,27 @@ table tr td {
 }
 
 /* Entry type vs value styling */
-.entry-name-type {
-    font-size: 18px;
-    font-weight: 600;
+.entry-type > .entry-signature {
+    font-weight: var(--weight-semibold);
     background-color: var(--violet-bg);
     border-left: 4px solid var(--violet);
+    font-size: var(--font-base);
+    line-height: 1.5;
 }
 
-.entry-name-value {
-    font-size: 16px;
-    font-weight: normal;
+.entry-value > .entry-signature {
+    font-weight: var(--weight-normal);
     background-color: transparent;
     border-left: 3px solid rgb(from var(--violet) r g b / .50);
+    font-size: var(--font-base);
+    line-height: 1.5;
 }
 
 /* Nested types get lighter background */
-.entry-depth-1 > .entry-name-type,
-.entry-depth-2 > .entry-name-type,
-.entry-depth-3 > .entry-name-type,
-.entry-depth-4 > .entry-name-type {
+.entry-depth-1.entry-type > .entry-signature,
+.entry-depth-2.entry-type > .entry-signature,
+.entry-depth-3.entry-type > .entry-signature,
+.entry-depth-4.entry-type > .entry-signature {
     background-color: hsl(from var(--violet-bg) h s calc(l * 1.02));
     border-left-color: hsl(from var(--violet) h calc(s * 0.8) calc(l * 1.1));
 }
@@ -240,6 +274,8 @@ body {
   margin: 0;
   padding: 0;
   font-family: var(--font-sans);
+  font-size: var(--font-sm);
+  line-height: 1.6;
   color: var(--text-color);
   background-color: var(--body-bg-color);
   overflow: hidden;
@@ -250,8 +286,8 @@ main {
   grid-column-end: content-end;
   box-sizing: border-box;
   position: relative;
-  font-size: 14pt; /* This keeps links AAA compliant while still making the links distinctly colored. */
-  line-height: 1.85em;
+  font-size: var(--font-sm);
+  line-height: 1.6;
   margin-top: 2px;
   padding: 16px;
   padding-top: 0px;
@@ -358,7 +394,7 @@ padding: 0px 16px;
   flex-wrap: nowrap;
   box-sizing: border-box;
   font-family: var(--font-sans);
-  font-size: 20px;
+  font-size: var(--font-lg);
   height: 100%;
   background-color: var(--violet-bg);
   /* min-width must be set to something (even 0) for text-overflow: ellipsis to work in descendants, but we want this anyway. */
@@ -409,7 +445,7 @@ footer p {
 }
 
 .sidebar-sub-entries {
-    font-size: 12pt;
+    font-size: var(--font-sm);
     display: none;
 }
 
@@ -452,7 +488,8 @@ footer p {
 }
 
 .sidebar-group-name {
-    font-weight: 500;
+    font-weight: var(--weight-medium);
+    font-size: var(--font-sm);
     cursor: pointer;
     display: inline-block;
     padding: 8px 16px;
@@ -480,23 +517,37 @@ footer p {
 }
 
 .module-name {
-  font-size: 40pt;
-  line-height: 1em;
+  font-size: var(--font-2xl);
+  line-height: 1.2;
   font-family: var(--font-mono);
-  font-weight: bold;
+  font-weight: var(--weight-bold);
   margin-top: 36px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
   color: var(--violet);
 }
 
 main h2 {
-    font-size: 28pt;
+    font-size: var(--font-2xl);
+    font-weight: var(--weight-bold);
+    line-height: 1.2;
+    margin-top: 36px;
+    margin-bottom: 16px;
 }
+
 main h3 {
-    font-size: 24pt;
+    font-size: var(--font-xl);
+    font-weight: var(--weight-semibold);
+    line-height: 1.3;
+    margin-top: 24px;
+    margin-bottom: 12px;
 }
+
 main h4 {
-    font-size: 20pt;
+    font-size: var(--font-lg);
+    font-weight: var(--weight-semibold);
+    line-height: 1.4;
+    margin-top: 16px;
+    margin-bottom: 8px;
 }
 
 .module-name a,
@@ -510,9 +561,10 @@ color: inherit;
 
 a.sidebar-module-link {
   box-sizing: border-box;
-  font-size: 14pt;
-  line-height: 24px;
+  font-size: var(--font-base);
+  line-height: 1.5;
   font-family: var(--font-mono);
+  font-weight: var(--weight-normal);
   display: flex;
   flex-direction: row-reverse;
   justify-content: space-between;
@@ -538,7 +590,7 @@ a.sidebar-module-link {
 }
 
 .sidebar-module-link.active {
-  font-weight: bold;
+  font-weight: var(--weight-bold);
 }
 
 .sidebar-module-link > .entry-toggle {
@@ -904,14 +956,6 @@ pre>samp {
 
     .entry-depth-4 {
         padding-left: 80px;
-    }
-
-    .entry-name-type {
-        font-size: 16px;
-    }
-
-    .entry-name-value {
-        font-size: 14px;
     }
 
     :root {

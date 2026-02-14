@@ -421,41 +421,30 @@ fn renderEntryTree(
     // Render this node if it's a leaf entry
     if (node.is_leaf) {
         if (node.entry) |entry| {
-            // Determine heading level: h2 for depth 1, h3 for depth 2, h4+ for depth 3+
-            const heading_level = if (depth == 1) "h2" else if (depth == 2) "h3" else "h4";
-
             // Determine CSS classes
             const type_class = if (node.is_type) "entry-type" else "entry-value";
-            const name_class = if (node.is_type) "entry-name-type" else "entry-name-value";
 
-            // Render entry section
-            try w.writeAll("        <section class=\"entry ");
+            // Render entry as styled div (not a heading element)
+            try w.writeAll("        <div class=\"entry ");
             try w.writeAll(type_class);
             try w.writeAll(" entry-depth-");
             try w.print("{d}", .{depth - 1});
+            try w.writeAll("\" id=\"");
+            try writeHtmlEscaped(w, node.full_path);
             try w.writeAll("\">\n");
 
-            // Heading with anchor
+            // Signature block - styled as code, not a heading
             const anchor_id = node.full_path;
-            try w.writeAll("            <");
-            try w.writeAll(heading_level);
-            try w.writeAll(" id=\"");
-            try writeHtmlEscaped(w, anchor_id);
-            try w.writeAll("\" class=\"entry-name ");
-            try w.writeAll(name_class);
-            try w.writeAll("\">");
-            try w.writeAll("<a href=\"#");
-            try writeHtmlEscaped(w, anchor_id);
-            try w.writeAll("\">🔗</a> ");
-
-            // Type signature
-            try w.writeAll("<code>");
+            try w.writeAll("            <div class=\"entry-signature\">\n");
+            try w.writeAll("                <code class=\"entry-signature-code\">");
             try renderEntrySignature(w, ctx, entry);
-            try w.writeAll("</code>");
-
-            try w.writeAll("</");
-            try w.writeAll(heading_level);
-            try w.writeAll(">\n");
+            try w.writeAll("</code>\n");
+            try w.writeAll("                <a href=\"#");
+            try writeHtmlEscaped(w, anchor_id);
+            try w.writeAll("\" class=\"entry-anchor\" aria-label=\"Permalink to ");
+            try writeHtmlEscaped(w, node.name);
+            try w.writeAll("\">🔗</a>\n");
+            try w.writeAll("            </div>\n");
 
             // Doc comment
             if (entry.doc_comment) |doc| {
@@ -473,7 +462,7 @@ fn renderEntryTree(
                 try w.writeAll("            </div>\n");
             }
 
-            try w.writeAll("        </section>\n");
+            try w.writeAll("        </div>\n");
         }
     } else if (node.children.items.len > 0) {
         // Non-leaf node with children - recurse
