@@ -18,34 +18,36 @@ const setupSidebarNav = () => {
   let currentModuleName = document.querySelector(".module-name").textContent;
   toggleSidebarEntryActive(currentModuleName);
 
-  document.querySelectorAll(".entry-toggle").forEach((el) => {
-    el.addEventListener("click", (e) => {
+  // Use event delegation for entry toggles and sidebar group toggles
+  document.addEventListener("click", (e) => {
+    // Handle entry toggle buttons
+    if (e.target.classList.contains("entry-toggle")) {
       e.preventDefault();
       e.stopImmediatePropagation();
       const moduleName = e.target.parentElement.dataset.moduleName;
       toggleSidebarEntryActive(moduleName);
-    });
-  });
+      return;
+    }
 
-  // Handle sidebar group toggles (for hierarchical entries)
-  document.querySelectorAll(".sidebar-group-name").forEach((el) => {
-    el.addEventListener("click", (e) => {
+    // Handle sidebar group name clicks
+    const groupName = e.target.closest(".sidebar-group-name");
+    if (groupName) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      const group = el.closest(".sidebar-group");
+      const group = groupName.closest(".sidebar-group");
       if (group) {
         group.classList.toggle("expanded");
       }
-    });
+      return;
+    }
   });
 
-  // Auto-expand active entry's ancestors
+  // Auto-expand groups in the active module
   const activeModule = document.querySelector(".sidebar-module-link.active");
   if (activeModule) {
-    // Expand the active module's sub-entries
     const subEntries = activeModule.parentElement?.querySelector(".sidebar-sub-entries");
     if (subEntries) {
-      // Expand all parent groups within the sub-entries
+      // Mark groups in active module as expanded
       subEntries.querySelectorAll(".sidebar-group").forEach((group) => {
         group.classList.add("expanded");
       });
