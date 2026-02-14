@@ -6919,6 +6919,10 @@ fn generateDocs(
     const DocModel = docs.DocModel;
     const extract = docs.extract;
 
+    // Determine if we're documenting a platform or something else by checking the module path
+    // If the path contains "platform", we're documenting a platform directly
+    const is_documenting_platform = std.mem.indexOf(u8, module_path, "platform") != null;
+
     // Determine package name from the first package
     var pkg_iter = build_env.packages.iterator();
     const first_pkg = if (pkg_iter.next()) |entry| entry.value_ptr.* else return;
@@ -6938,6 +6942,12 @@ fn generateDocs(
 
         for (package_env.modules.items) |module_state| {
             if (module_state.env) |*mod_env| {
+                // Skip platform main.roc modules when documenting an app
+                // Platform modules are still included when documenting a platform directly
+                if (mod_env.module_kind == .platform and !is_documenting_platform) {
+                    continue;
+                }
+
                 var mod_docs = extract.extractModuleDocs(ctx.gpa, mod_env, sched_pkg_name) catch |err| {
                     std.debug.print("Warning: failed to extract docs for module {s}: {}\n", .{ module_state.name, err });
                     continue;
@@ -6989,8 +6999,6 @@ fn generateDocs(
         std.debug.print("Error: failed to generate HTML docs: {}\n", .{err});
         return err;
     };
-
-    _ = module_path;
 }
 
 test "appendWindowsQuotedArg" {
