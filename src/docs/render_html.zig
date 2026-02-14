@@ -283,7 +283,6 @@ fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
             if (idx > 0) try path_so_far.append(gpa, '.');
             try path_so_far.appendSlice(gpa, part);
 
-            const full_path = try gpa.dupe(u8, path_so_far.items);
             const is_last = (idx == parts.items.len - 1);
 
             // Find or create child node
@@ -296,6 +295,7 @@ fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
             }
 
             if (found == null) {
+                const full_path = try gpa.dupe(u8, path_so_far.items);
                 const new_node = try SidebarNode.init(gpa, part, full_path, true);
                 try current.children.append(gpa, new_node);
                 found = new_node;
