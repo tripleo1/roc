@@ -75,21 +75,15 @@ pub const ScopeMap = struct {
         }.lessThan);
     }
 
-    /// Get all bindings visible at the given offset.
+    /// Get all bindings, which callers should filter using `isVisibleAt`.
+    /// Returns an empty slice if no bindings are visible at the given offset.
     pub fn getBindingsAtOffset(self: *const ScopeMap, offset: u32) []const Binding {
-        // Count how many bindings are visible at this offset
-        var count: usize = 0;
         for (self.bindings.items) |binding| {
             if (binding.visible_from <= offset and offset < binding.visible_to) {
-                count += 1;
+                return self.bindings.items;
             }
         }
-
-        if (count == 0) return &.{};
-
-        // Return a slice of the visible bindings
-        // Note: we return all items and let the caller filter, since bindings may shadow
-        return self.bindings.items;
+        return &.{};
     }
 
     /// Check if a binding is visible at the given offset
