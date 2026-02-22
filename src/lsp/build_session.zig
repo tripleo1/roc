@@ -4,7 +4,6 @@
 //! - Converting URIs to paths
 //! - Creating a BuildEnv
 //! - Setting up file overrides
-//! - Changing directories
 //! - Building and draining reports
 //! - Finding the module environment
 //!
@@ -28,7 +27,6 @@ pub const BuildSession = struct {
     absolute_path: []const u8,
     build_succeeded: bool,
     drained_reports: ?[]BuildEnv.DrainedModuleReports = null,
-    prev_cwd: ?[]const u8 = null,
 
     /// Module environment from successful build (null if build failed)
     cached_module_env: ?*ModuleEnv = null,
@@ -44,9 +42,7 @@ pub const BuildSession = struct {
     /// Initialize a build session for the given URI.
     /// This handles:
     /// - URI to path conversion
-    /// - BuildEnv creation
     /// - File override setup
-    /// - Directory change
     /// - Building
     /// - Report draining
     pub fn init(
@@ -62,16 +58,6 @@ pub const BuildSession = struct {
         const absolute_path = std.fs.cwd().realpathAlloc(allocator, path) catch
             try allocator.dupe(u8, path);
         errdefer allocator.free(absolute_path);
-
-        // Save current directory
-        const prev_cwd = std.process.getCwdAlloc(allocator) catch null;
-        errdefer if (prev_cwd) |cwd| allocator.free(cwd);
-
-        // Change to the directory containing the file
-        const dir_slice = std.fs.path.dirname(absolute_path) orelse ".";
-        const dir_owned = try allocator.dupe(u8, dir_slice);
-        defer allocator.free(dir_owned);
-        std.process.changeCurDir(dir_owned) catch {};
 
         // Set up file provider if override text provided
         var provider_state: ?OverrideProviderState = null;
@@ -113,19 +99,11 @@ pub const BuildSession = struct {
             .absolute_path = absolute_path,
             .build_succeeded = build_succeeded,
             .drained_reports = drained_reports,
-            .prev_cwd = prev_cwd,
         };
     }
 
-    /// Clean up the build session.
-    /// Restores the working directory and frees allocated memory.
+    /// Clean up the build session and free allocated memory.
     pub fn deinit(self: *BuildSession) void {
-        // Restore previous directory
-        if (self.prev_cwd) |cwd| {
-            std.process.changeCurDir(cwd) catch {};
-            self.allocator.free(cwd);
-        }
-
         // Free drained reports
         if (self.drained_reports) |drained| {
             self.freeDrainedReports(drained);

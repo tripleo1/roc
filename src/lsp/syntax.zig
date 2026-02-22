@@ -1800,17 +1800,6 @@ pub const SyntaxChecker = struct {
         env.setFileProvider(provider);
         defer env.setFileProvider(null);
 
-        // Change to file's directory for relative path resolution
-        const dir_slice = std.fs.path.dirname(absolute_path) orelse ".";
-        const dir_owned = allocator.dupe(u8, dir_slice) catch return &[_]SymbolInformation{};
-        defer allocator.free(dir_owned);
-        const prev_cwd = std.process.getCwdAlloc(allocator) catch null;
-        defer if (prev_cwd) |cwd| {
-            std.process.changeCurDir(cwd) catch {};
-            allocator.free(cwd);
-        };
-        std.process.changeCurDir(dir_owned) catch {};
-
         self.logDebug(.build, "symbols: building {s}", .{absolute_path});
         env.build(absolute_path) catch |err| {
             self.logDebug(.build, "symbols: build failed for {s}: {s}", .{ absolute_path, @errorName(err) });
