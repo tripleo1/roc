@@ -1438,16 +1438,21 @@ pub const CompletionBuilder = struct {
         const args_slice = module_env.store.sliceTypeAnnos(args);
         if (args_slice.len == 0) return null;
 
+        return self.formatTagSignatureInner(module_env, tag_name, args_slice) catch null;
+    }
+
+    fn formatTagSignatureInner(self: *CompletionBuilder, module_env: *ModuleEnv, tag_name: []const u8, args_slice: []const CIR.TypeAnno.Idx) ![]const u8 {
         var buf = std.ArrayList(u8){};
-        buf.appendSlice(self.allocator, tag_name) catch return null;
-        buf.append(self.allocator, '(') catch return null;
+        errdefer buf.deinit(self.allocator);
+        try buf.appendSlice(self.allocator, tag_name);
+        try buf.append(self.allocator, '(');
         for (args_slice, 0..) |arg_idx, i| {
-            if (i > 0) buf.appendSlice(self.allocator, ", ") catch return null;
+            if (i > 0) try buf.appendSlice(self.allocator, ", ");
             const arg_anno = module_env.store.getTypeAnno(arg_idx);
             self.writeTypeAnno(&buf, module_env, arg_anno);
         }
-        buf.append(self.allocator, ')') catch return null;
-        return buf.toOwnedSlice(self.allocator) catch null;
+        try buf.append(self.allocator, ')');
+        return try buf.toOwnedSlice(self.allocator);
     }
 
     /// Write a human-readable representation of a TypeAnno to a buffer.
