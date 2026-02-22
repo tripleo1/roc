@@ -14,9 +14,7 @@ const TypeStore = types.Store;
 const Content = types.Content;
 const Var = types.Var;
 const Record = types.Record;
-const Alias = types.Alias;
 const TypeIdent = types.TypeIdent;
-const RecordField = types.RecordField;
 const Ident = base.Ident;
 
 /// Result of unwrapping type aliases

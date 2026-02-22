@@ -22,7 +22,6 @@
 const std = @import("std");
 const can = @import("can");
 const CIR = can.CIR;
-const ModuleEnv = can.ModuleEnv;
 const NodeStore = can.NodeStore;
 const base = @import("base");
 const Region = base.Region;

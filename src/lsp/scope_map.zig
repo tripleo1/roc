@@ -13,7 +13,6 @@ const can = @import("can");
 
 const CIR = can.CIR;
 const ModuleEnv = can.ModuleEnv;
-const Region = base.Region;
 const Ident = base.Ident;
 const Allocator = std.mem.Allocator;
 

@@ -30,9 +30,6 @@ pub const BuildSession = struct {
     drained_reports: ?[]BuildEnv.DrainedModuleReports = null,
     prev_cwd: ?[]const u8 = null,
 
-    /// File provider state (if override text was provided)
-    provider_state: ?OverrideProviderState = null,
-
     /// Module environment from successful build (null if build failed)
     cached_module_env: ?*ModuleEnv = null,
 
@@ -99,6 +96,13 @@ pub const BuildSession = struct {
             break :blk true;
         };
 
+        // Clear the file provider now that the build is complete.
+        // The provider's ctx pointer references stack-local state that
+        // becomes invalid once this function returns.
+        if (override_text != null) {
+            env.setFileProvider(null);
+        }
+
         // Drain reports regardless of build success to capture parse errors
         // Parse errors are emitted to the sink even when build fails
         const drained_reports = env.drainReports() catch null;
@@ -110,18 +114,12 @@ pub const BuildSession = struct {
             .build_succeeded = build_succeeded,
             .drained_reports = drained_reports,
             .prev_cwd = prev_cwd,
-            .provider_state = provider_state,
         };
     }
 
     /// Clean up the build session.
     /// Restores the working directory and frees allocated memory.
     pub fn deinit(self: *BuildSession) void {
-        // Clear file provider
-        if (self.provider_state != null) {
-            self.env.setFileProvider(null);
-        }
-
         // Restore previous directory
         if (self.prev_cwd) |cwd| {
             std.process.changeCurDir(cwd) catch {};

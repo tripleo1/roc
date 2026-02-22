@@ -17,7 +17,6 @@ const compile = @import("compile");
 const completion_handler = @import("../handlers/completion.zig");
 const builtin_completion = @import("builtins.zig");
 const scope_map = @import("../scope_map.zig");
-const type_utils = @import("../type_utils.zig");
 const module_lookup = @import("../module_lookup.zig");
 const doc_comments = @import("../doc_comments.zig");
 

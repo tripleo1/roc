@@ -21,7 +21,6 @@ const VisitAction = @import("cir_visitor.zig").VisitAction;
 const types = @import("types");
 const base = @import("base");
 const Region = base.Region;
-const Ident = base.Ident;
 
 // Result Types
 

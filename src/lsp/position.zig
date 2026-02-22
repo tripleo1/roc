@@ -1,6 +1,5 @@
 //! Helpers for converting between byte offsets and LSP line/character positions.
 
-const std = @import("std");
 const document_symbol_handler = @import("handlers/document_symbol.zig");
 const can = @import("can");
 const ModuleEnv = can.ModuleEnv;

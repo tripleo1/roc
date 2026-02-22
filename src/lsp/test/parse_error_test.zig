@@ -2,7 +2,6 @@
 
 const std = @import("std");
 const SyntaxChecker = @import("../syntax.zig").SyntaxChecker;
-const Diagnostics = @import("../diagnostics.zig");
 
 test "parse errors are reported as diagnostics" {
     const allocator = std.testing.allocator;
