@@ -53,6 +53,18 @@ fn uriFromPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     return @import("../uri.zig").pathToUri(allocator, path);
 }
 
+/// Check whether a JSON items array contains a completion item with the given label.
+fn hasCompletionLabel(items: std.json.Value, label: []const u8) bool {
+    if (items != .array) return false;
+    for (items.array.items) |item| {
+        if (item != .object) continue;
+        const l = item.object.get("label") orelse continue;
+        if (l != .string) continue;
+        if (std.mem.eql(u8, l.string, label)) return true;
+    }
+    return false;
+}
+
 test "formatting handler formats simple expression" {
     const allocator = std.testing.allocator;
     var tmp = std.testing.tmpDir(.{});
@@ -2378,9 +2390,10 @@ test "completion handler returns local variables in block scope" {
         const result = parsed.value.object.get("result") orelse continue;
         const items = result.object.get("items") orelse continue;
         try std.testing.expect(items == .array);
-
-        // The test passes as long as we got a valid completion response with items array
-        // The scope map unit tests verify the detailed binding logic directly
+        try std.testing.expect(items.array.items.len > 0);
+        // TODO: assert hasCompletionLabel(items, "local_var") once scope
+        // resolution produces local bindings in the integration test context.
+        // Scope binding visibility is tested directly in scope_map unit tests.
         found_response = true;
         break;
     }
@@ -2479,9 +2492,10 @@ test "completion handler returns lambda parameters" {
         const result = parsed.value.object.get("result") orelse continue;
         const items = result.object.get("items") orelse continue;
         try std.testing.expect(items == .array);
-
-        // The test passes as long as we got a valid completion response with items array
-        // The scope map unit tests verify the detailed binding logic directly
+        try std.testing.expect(items.array.items.len > 0);
+        // TODO: assert hasCompletionLabel(items, "first") and "second" once
+        // lambda param resolution works in the integration test context.
+        // Lambda param visibility is tested directly in scope_map unit tests.
         found_response = true;
         break;
     }
@@ -2579,9 +2593,9 @@ test "completion handler returns top-level definitions" {
         const result = parsed.value.object.get("result") orelse continue;
         const items = result.object.get("items") orelse continue;
         try std.testing.expect(items == .array);
-
-        // The test passes as long as we got a valid completion response with items array
-        // The scope map unit tests verify the detailed binding logic directly
+        try std.testing.expect(items.array.items.len > 0);
+        try std.testing.expect(hasCompletionLabel(items, "my_constant"));
+        try std.testing.expect(hasCompletionLabel(items, "my_function"));
         found_response = true;
         break;
     }
