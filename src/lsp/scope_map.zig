@@ -285,6 +285,37 @@ pub const ScopeMap = struct {
             .e_nominal_external => |nominal| {
                 try self.traverseExpr(module_env, nominal.backing_expr, scope_end, depth + 1);
             },
+            .e_hosted_lambda => |hosted| {
+                // Hosted lambda parameters are visible within the body
+                const body_region = module_env.store.getExprRegion(hosted.body);
+                const args = module_env.store.slicePatterns(hosted.args);
+                for (args) |arg_pattern| {
+                    try self.extractBindingsFromPattern(module_env, arg_pattern, body_region.start.offset, body_region.end.offset, true, depth + 1);
+                }
+                try self.traverseExpr(module_env, hosted.body, body_region.end.offset, depth + 1);
+            },
+            .e_for => |for_expr| {
+                // For loop variable is visible within the body
+                const body_region = module_env.store.getExprRegion(for_expr.body);
+                try self.extractBindingsFromPattern(module_env, for_expr.patt, body_region.start.offset, body_region.end.offset, false, depth + 1);
+                try self.traverseExpr(module_env, for_expr.expr, scope_end, depth + 1);
+                try self.traverseExpr(module_env, for_expr.body, body_region.end.offset, depth + 1);
+            },
+            .e_dbg => |dbg_expr| {
+                try self.traverseExpr(module_env, dbg_expr.expr, scope_end, depth + 1);
+            },
+            .e_expect => |expect_expr| {
+                try self.traverseExpr(module_env, expect_expr.body, scope_end, depth + 1);
+            },
+            .e_return => |ret| {
+                try self.traverseExpr(module_env, ret.expr, scope_end, depth + 1);
+            },
+            .e_run_low_level => |low_level| {
+                const args = module_env.store.sliceExpr(low_level.args);
+                for (args) |arg_idx| {
+                    try self.traverseExpr(module_env, arg_idx, scope_end, depth + 1);
+                }
+            },
             // Leaf expressions - no nested scopes
             .e_num,
             .e_frac_f32,
@@ -302,16 +333,10 @@ pub const ScopeMap = struct {
             .e_empty_record,
             .e_zero_argument_tag,
             .e_runtime_error,
-            .e_hosted_lambda,
-            .e_run_low_level,
             .e_crash,
-            .e_dbg,
-            .e_expect,
             .e_ellipsis,
             .e_anno_only,
-            .e_return,
             .e_type_var_dispatch,
-            .e_for,
             => {},
         }
     }
