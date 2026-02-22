@@ -631,6 +631,7 @@ pub const CompletionBuilder = struct {
             const stmt = module_env.store.getStatement(stmt_idx);
             const pattern_idx = switch (stmt) {
                 .s_decl => |decl| decl.pattern,
+                .s_var => |var_stmt| var_stmt.pattern_idx,
                 else => continue,
             };
 
@@ -985,6 +986,7 @@ pub const CompletionBuilder = struct {
                 const stmt = module_env.store.getStatement(stmt_idx);
                 const pattern_idx = switch (stmt) {
                     .s_decl => |decl| decl.pattern,
+                    .s_var => |var_stmt| var_stmt.pattern_idx,
                     else => continue,
                 };
 
@@ -1257,12 +1259,13 @@ pub const CompletionBuilder = struct {
             }
         }
 
-        // Fall back to statements (apps use s_decl for definitions).
+        // Fall back to statements (apps use s_decl/s_var for definitions).
         const statements_slice = module_env.store.sliceStatements(module_env.all_statements);
         for (statements_slice) |stmt_idx| {
             const stmt = module_env.store.getStatement(stmt_idx);
             const pattern_idx = switch (stmt) {
                 .s_decl => |decl| decl.pattern,
+                .s_var => |var_stmt| var_stmt.pattern_idx,
                 else => continue,
             };
 
@@ -1312,6 +1315,7 @@ pub const CompletionBuilder = struct {
             const stmt = module_env.store.getStatement(stmt_idx);
             const pattern_idx = switch (stmt) {
                 .s_decl => |decl| decl.pattern,
+                .s_var => |var_stmt| var_stmt.pattern_idx,
                 else => continue,
             };
 
