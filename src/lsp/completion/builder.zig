@@ -592,38 +592,10 @@ pub const CompletionBuilder = struct {
     ) !void {
         self.logDebug("addRecordFieldCompletions: looking for '{s}' at offset {d}", .{ variable_name, variable_start });
 
-        // Find the binding for this variable name
-        var scope = scope_map.ScopeMap.init(self.allocator);
-        defer scope.deinit();
-        scope.build(module_env) catch |err| {
-            self.logDebug("addRecordFieldCompletions: scope.build failed: {}", .{err});
-            return;
-        };
-
-        self.logDebug("addRecordFieldCompletions: scope has {d} bindings", .{scope.bindings.items.len});
-
-        // Find the binding with matching name that's visible at the variable position
-        var found_binding: ?scope_map.Binding = null;
-        for (scope.bindings.items) |binding| {
-            const binding_name = module_env.getIdentText(binding.ident);
-            const is_visible = scope_map.ScopeMap.isVisibleAt(binding, variable_start);
-            self.logDebug("addRecordFieldCompletions: binding '{s}' visible_from={d} visible_to={d} is_visible={}", .{ binding_name, binding.visible_from, binding.visible_to, is_visible });
-            if (!is_visible) continue;
-            if (std.mem.eql(u8, binding_name, variable_name)) {
-                self.logDebug("addRecordFieldCompletions: FOUND binding '{s}'", .{binding_name});
-                found_binding = binding;
-                break;
-            }
-        }
-
-        // Even if we found a binding in the local scope, we need to look up the definition
-        // by name in top-level defs/statements, because the binding's pattern_idx may be
-        // from incomplete code and not have full type info (especially when using snapshots).
-        if (found_binding) |_| {
-            self.logDebug("addRecordFieldCompletions: found binding, but will use def/stmt lookup for better types", .{});
-        } else {
-            self.logDebug("addRecordFieldCompletions: NO binding found for '{s}'", .{variable_name});
-        }
+        // Look up the definition by name in top-level defs/statements.
+        // We use def/stmt lookup rather than ScopeMap bindings because the
+        // binding's pattern_idx may come from incomplete code and lack full
+        // type info (especially when using snapshots).
 
         // Check top-level definitions
         const defs_slice = module_env.store.sliceDefs(module_env.all_defs);
