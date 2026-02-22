@@ -1834,7 +1834,8 @@ pub const SyntaxChecker = struct {
         };
 
         // Build line offset table
-        const line_offsets = pos.buildLineOffsets(source);
+        const line_offsets = pos.buildLineOffsets(allocator, source) catch return &[_]SymbolInformation{};
+        defer line_offsets.deinit();
 
         var symbols = std.ArrayList(SymbolInformation){};
         errdefer {
