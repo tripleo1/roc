@@ -99,6 +99,49 @@ pub const SyntaxChecker = struct {
 
         self.mutex.lock();
         defer self.mutex.unlock();
+
+        // Check if content has changed using hash comparison BEFORE building.
+        // This avoids unnecessary rebuilds on focus/blur events.
+        if (override_text) |text| {
+            const path = uri_util.uriToPath(self.allocator, uri) catch null;
+            defer if (path) |p| self.allocator.free(p);
+
+            const abs_path = if (path) |p|
+                std.fs.cwd().realpathAlloc(self.allocator, p) catch self.allocator.dupe(u8, p) catch null
+            else
+                null;
+            defer if (abs_path) |a| self.allocator.free(a);
+
+            if (abs_path) |ap| {
+                const new_hash = DependencyGraph.computeContentHash(text);
+                const old_hash = self.dependency_graph.getContentHash(ap);
+
+                if (old_hash) |existing| {
+                    if (std.mem.eql(u8, &existing, &new_hash)) {
+                        self.logDebug(.build, "[INCREMENTAL] SKIP rebuild for {s}: content hash unchanged ({x}...)", .{
+                            ap,
+                            new_hash[0..4].*,
+                        });
+                        return &[_]Diagnostics.PublishDiagnostics{};
+                    }
+                    self.logDebug(.build, "[INCREMENTAL] REBUILD {s}: content hash changed ({x}... -> {x}...)", .{
+                        ap,
+                        existing[0..4].*,
+                        new_hash[0..4].*,
+                    });
+                } else {
+                    self.logDebug(.build, "[INCREMENTAL] INITIAL build for {s}: no previous hash (new hash: {x}...)", .{
+                        ap,
+                        new_hash[0..4].*,
+                    });
+                }
+
+                self.dependency_graph.setContentHash(ap, new_hash) catch |err| {
+                    self.logDebug(.build, "Failed to set content hash: {s}", .{@errorName(err)});
+                };
+            }
+        }
+
         const env_handle = try self.createFreshBuildEnv();
         const env = env_handle.envPtr();
 
@@ -106,38 +149,6 @@ pub const SyntaxChecker = struct {
         defer session.deinit();
 
         const absolute_path = session.absolute_path;
-        // Check if content has changed using hash comparison
-        // This avoids unnecessary rebuilds on focus/blur events
-        if (override_text) |text| {
-            const new_hash = DependencyGraph.computeContentHash(text);
-            const old_hash = self.dependency_graph.getContentHash(session.absolute_path);
-
-            if (old_hash) |existing| {
-                if (std.mem.eql(u8, &existing, &new_hash)) {
-                    self.logDebug(.build, "[INCREMENTAL] SKIP rebuild for {s}: content hash unchanged ({x}...)", .{
-                        session.absolute_path,
-                        new_hash[0..4].*,
-                    });
-                    // Return empty diagnostics array - no changes means no new diagnostics
-                    return &[_]Diagnostics.PublishDiagnostics{};
-                }
-                self.logDebug(.build, "[INCREMENTAL] REBUILD {s}: content hash changed ({x}... -> {x}...)", .{
-                    session.absolute_path,
-                    existing[0..4].*,
-                    new_hash[0..4].*,
-                });
-            } else {
-                self.logDebug(.build, "[INCREMENTAL] INITIAL build for {s}: no previous hash (new hash: {x}...)", .{
-                    session.absolute_path,
-                    new_hash[0..4].*,
-                });
-            }
-
-            // Update the content hash for this module
-            self.dependency_graph.setContentHash(session.absolute_path, new_hash) catch |err| {
-                self.logDebug(.build, "Failed to set content hash: {s}", .{@errorName(err)});
-            };
-        }
 
         // Update dependency graph from successful build
         self.updateDependencyGraph(env);
