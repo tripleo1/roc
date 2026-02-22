@@ -23,8 +23,6 @@ const std = @import("std");
 const can = @import("can");
 const CIR = can.CIR;
 const NodeStore = can.NodeStore;
-const base = @import("base");
-const Region = base.Region;
 
 /// Action returned by visitor callbacks to control traversal flow.
 pub const VisitAction = enum {
@@ -633,39 +631,6 @@ pub fn CirVisitor(comptime Context: type) type {
             }
         }
     };
-}
-
-// Helper Functions
-
-/// Check if a region contains a given byte offset.
-/// Returns true if start <= offset < end.
-pub fn regionContainsOffset(region: Region, offset: u32) bool {
-    return region.start.offset <= offset and offset < region.end.offset;
-}
-
-/// Calculate the size (span) of a region in bytes.
-pub fn regionSize(region: Region) u32 {
-    return region.end.offset - region.start.offset;
-}
-
-/// Get the region for an expression.
-pub fn getExprRegion(store: *const NodeStore, expr_idx: CIR.Expr.Idx) Region {
-    return store.getExprRegion(expr_idx);
-}
-
-/// Get the region for a pattern.
-pub fn getPatternRegion(store: *const NodeStore, pattern_idx: CIR.Pattern.Idx) Region {
-    return store.getPatternRegion(pattern_idx);
-}
-
-/// Get the region for a statement.
-pub fn getStatementRegion(store: *const NodeStore, stmt_idx: CIR.Statement.Idx) Region {
-    return store.getStatementRegion(stmt_idx);
-}
-
-/// Get the region for a type annotation.
-pub fn getTypeAnnoRegion(store: *const NodeStore, anno_idx: CIR.TypeAnno.Idx) Region {
-    return store.getTypeAnnoRegion(anno_idx);
 }
 
 // Tests
