@@ -41,21 +41,7 @@ pub const CompletionContext = union(enum) {
 /// Analyzes the source text to determine what kind of completion is appropriate
 /// based on what precedes the cursor position.
 pub fn detectCompletionContext(source: []const u8, line: u32, character: u32) CompletionContext {
-    // Convert line/character to byte offset
-    var current_line: u32 = 0;
-    var line_start: usize = 0;
-
-    for (source, 0..) |c, i| {
-        if (current_line == line) {
-            line_start = i;
-            break;
-        }
-        if (c == '\n') {
-            current_line += 1;
-        }
-    }
-
-    const cursor_offset = line_start + character;
+    const cursor_offset = computeOffset(source, line, character);
 
     if (cursor_offset == 0 or cursor_offset > source.len) {
         return .expression;
