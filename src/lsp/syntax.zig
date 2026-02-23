@@ -2250,16 +2250,16 @@ pub const SyntaxChecker = struct {
                         const variable_name = lastChainSegment(record_access.access_chain);
                         const variable_start = record_access.member_start;
 
+                        // Try the precise CIR-based lookup first: findDotReceiverTypeVar
+                        // specifically looks for e_dot_access nodes and returns the
+                        // receiver's type, which is semantically correct for dot
+                        // completions. Fall back to findExprEndingAt for cases where
+                        // the CIR lacks a dot access node (e.g., incomplete code).
                         var resolved_type_var: ?types.Var = null;
                         if (cir_queries.findDotReceiverTypeVar(module_env, cursor_offset)) |type_var| {
                             resolved_type_var = type_var;
                         }
-                        //NOTE[ELI]: I'm really not sure if we shouldn't always do this instead
                         if (resolved_type_var == null and record_access.dot_offset > 0) {
-                            // Find the outermost expression ending exactly at the dot.
-                            // Using findExprEndingAt (instead of findTypeAtOffset with
-                            // dot_offset-1) avoids matching a child expression whose
-                            // exclusive-end coincides with the delimiter character.
                             if (cir_queries.findExprEndingAt(module_env, record_access.dot_offset)) |type_at| {
                                 resolved_type_var = type_at.type_var;
                             }
@@ -2287,13 +2287,14 @@ pub const SyntaxChecker = struct {
                 // Use CIR to resolve receiver types for chained calls (e.g., value.func().).
                 // This avoids brittle text parsing and keeps completion tied to the AST.
                 if (module_env_opt) |module_env| {
+                    // Prefer findDotReceiverTypeVar (semantic dot-access lookup)
+                    // and fall back to findExprEndingAt (position-based) when the
+                    // CIR doesn't have a dot access node for this position.
                     var resolved_type_var: ?types.Var = null;
                     if (cir_queries.findDotReceiverTypeVar(module_env, cursor_offset)) |type_var| {
                         resolved_type_var = type_var;
                     }
-                    //NOTE[ELI]: I'm really not sure if we shouldn't always do this instead
                     if (resolved_type_var == null and info.dot_offset > 0) {
-                        // Find the outermost expression ending exactly at the dot.
                         if (cir_queries.findExprEndingAt(module_env, info.dot_offset)) |type_at| {
                             resolved_type_var = type_at.type_var;
                         }
