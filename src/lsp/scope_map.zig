@@ -82,7 +82,7 @@ pub const ScopeMap = struct {
 
     /// Process a statement and extract any bindings it introduces.
     fn processStatement(self: *ScopeMap, module_env: *ModuleEnv, stmt_idx: CIR.Statement.Idx, scope_end: u32, depth: usize) Allocator.Error!void {
-        if (depth > 512) return;
+        if (depth > 128) return;
 
         const stmt = module_env.store.getStatement(stmt_idx);
         const stmt_region = module_env.store.getStatementRegion(stmt_idx);
@@ -135,7 +135,7 @@ pub const ScopeMap = struct {
 
     /// Traverse an expression and extract bindings from nested scopes.
     fn traverseExpr(self: *ScopeMap, module_env: *ModuleEnv, expr_idx: CIR.Expr.Idx, scope_end: u32, depth: usize) Allocator.Error!void {
-        if (depth > 512) return;
+        if (depth > 128) return;
 
         const expr = module_env.store.getExpr(expr_idx);
 
@@ -340,7 +340,7 @@ pub const ScopeMap = struct {
         is_parameter: bool,
         depth: usize,
     ) Allocator.Error!void {
-        if (depth > 512) return;
+        if (depth > 128) return;
 
         const pattern = module_env.store.getPattern(pattern_idx);
 
