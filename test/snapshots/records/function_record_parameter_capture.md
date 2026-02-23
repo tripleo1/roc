@@ -99,5 +99,5 @@ NO CHANGE
 ~~~
 # TYPES
 ~~~clojure
-(expr (type "{ a: b, age: Dec, name: Str } -> { full_record: { a: b, age: Dec, name: Str }, greeting: Str, is_adult: Bool }"))
+(expr (type "{ ..b, a: c, age: Dec, name: Str } -> { full_record: { ..b, a: c, age: Dec, name: Str }, greeting: Str, is_adult: Bool }"))
 ~~~
