@@ -55,100 +55,106 @@ pub fn detectCompletionContext(source: []const u8, line: u32, character: u32) Co
         pos -= 1;
     }
 
-    // Skip whitespace to find the actual context character
+    // Check for dot immediately (no whitespace skip). Roc dot access syntax
+    // does not allow whitespace between receiver and dot (`record.field`, not
+    // `record .field`), so we only recognize a dot that is directly adjacent.
+    if (pos > 0 and source[pos - 1] == '.') {
+        return detectDotContext(source, pos);
+    }
+
+    // For non-dot contexts, skip whitespace to find the context character.
+    // This handles `x : Str` where there is a space between colon and type.
     while (pos > 0 and (source[pos - 1] == ' ' or source[pos - 1] == '\t')) {
         pos -= 1;
     }
 
-    // Check what's immediately before (after skipping whitespace)
-    if (pos > 0) {
-        const prev_char = source[pos - 1];
-
-        if (prev_char == '.') {
-            // After a dot - could be module access or record field access
-            // Look for identifier before the dot
-            const ident_end = pos - 1;
-            var ident_start = ident_end;
-
-            while (ident_start > 0 and (std.ascii.isAlphanumeric(source[ident_start - 1]) or source[ident_start - 1] == '_')) {
-                ident_start -= 1;
-            }
-
-            if (ident_start < ident_end) {
-                const ident_name = source[ident_start..ident_end];
-                if (ident_name.len > 0) {
-                    var chain_start = ident_start;
-                    while (chain_start > 0) {
-                        const c = source[chain_start - 1];
-                        if (std.ascii.isAlphanumeric(c) or c == '_' or c == '.') {
-                            chain_start -= 1;
-                        } else {
-                            break;
-                        }
-                    }
-
-                    const access_chain = source[chain_start..ident_end];
-
-                    if (std.ascii.isUpper(ident_name[0]) and std.mem.indexOfScalar(u8, access_chain, '.') == null) {
-                        // Uppercase - module access (e.g., "Str.")
-                        return .{ .after_module_dot = ident_name };
-                    } else {
-                        // Lowercase - record field access (e.g., "myRecord.")
-                        return .{ .after_value_dot = .{
-                            .access_chain = access_chain,
-                            .chain_start = @intCast(chain_start),
-                            .dot_offset = @intCast(pos - 1),
-                            .member_start = @intCast(ident_start),
-                        } };
-                    }
-                }
-            } else {
-                // No identifier before the dot; treat as a receiver dot (e.g., call chaining).
-                // Try to extract the call chain by matching parentheses backwards.
-                const dot_off: u32 = @intCast(pos - 1);
-                var result: CompletionContext = .{ .after_receiver_dot = .{ .dot_offset = dot_off } };
-
-                if (ident_end > 0 and source[ident_end - 1] == ')') {
-                    // Walk backwards to find the matching '('
-                    var paren_depth: u32 = 1;
-                    var scan = ident_end - 1; // position of ')'
-                    while (scan > 0) {
-                        scan -= 1;
-                        if (source[scan] == ')') {
-                            paren_depth += 1;
-                        } else if (source[scan] == '(') {
-                            paren_depth -= 1;
-                            if (paren_depth == 0) break;
-                        }
-                    }
-                    // scan now points to '(' (if matched)
-                    if (paren_depth == 0 and scan > 0) {
-                        // Extract the identifier chain before '('
-                        const chain_end = scan;
-                        var chain_start = chain_end;
-                        while (chain_start > 0) {
-                            const c = source[chain_start - 1];
-                            if (std.ascii.isAlphanumeric(c) or c == '_' or c == '.') {
-                                chain_start -= 1;
-                            } else {
-                                break;
-                            }
-                        }
-                        if (chain_start < chain_end) {
-                            result.after_receiver_dot.call_chain = source[chain_start..chain_end];
-                            result.after_receiver_dot.chain_start = @intCast(chain_start);
-                        }
-                    }
-                }
-
-                return result;
-            }
-        } else if (prev_char == ':') {
-            return .after_colon;
-        }
+    if (pos > 0 and source[pos - 1] == ':') {
+        return .after_colon;
     }
 
     return .expression;
+}
+
+/// Detect the specific dot context once we know source[pos-1] == '.'.
+fn detectDotContext(source: []const u8, pos: anytype) CompletionContext {
+    // After a dot - could be module access or record field access
+    // Look for identifier before the dot
+    const ident_end = pos - 1;
+    var ident_start = ident_end;
+
+    while (ident_start > 0 and (std.ascii.isAlphanumeric(source[ident_start - 1]) or source[ident_start - 1] == '_')) {
+        ident_start -= 1;
+    }
+
+    if (ident_start < ident_end) {
+        const ident_name = source[ident_start..ident_end];
+        if (ident_name.len > 0) {
+            var chain_start = ident_start;
+            while (chain_start > 0) {
+                const c = source[chain_start - 1];
+                if (std.ascii.isAlphanumeric(c) or c == '_' or c == '.') {
+                    chain_start -= 1;
+                } else {
+                    break;
+                }
+            }
+
+            const access_chain = source[chain_start..ident_end];
+
+            if (std.ascii.isUpper(ident_name[0]) and std.mem.indexOfScalar(u8, access_chain, '.') == null) {
+                // Uppercase without dots - module access (e.g., "Str.")
+                return .{ .after_module_dot = ident_name };
+            } else {
+                // Lowercase or dotted chain - value/record field access (e.g., "myRecord.")
+                return .{ .after_value_dot = .{
+                    .access_chain = access_chain,
+                    .chain_start = @intCast(chain_start),
+                    .dot_offset = @intCast(pos - 1),
+                    .member_start = @intCast(ident_start),
+                } };
+            }
+        }
+    }
+
+    // No identifier before the dot; treat as a receiver dot (e.g., call chaining).
+    // Try to extract the call chain by matching parentheses backwards.
+    const dot_off: u32 = @intCast(pos - 1);
+    var result: CompletionContext = .{ .after_receiver_dot = .{ .dot_offset = dot_off } };
+
+    if (ident_end > 0 and source[ident_end - 1] == ')') {
+        // Walk backwards to find the matching '('
+        var paren_depth: u32 = 1;
+        var scan = ident_end - 1; // position of ')'
+        while (scan > 0) {
+            scan -= 1;
+            if (source[scan] == ')') {
+                paren_depth += 1;
+            } else if (source[scan] == '(') {
+                paren_depth -= 1;
+                if (paren_depth == 0) break;
+            }
+        }
+        // scan now points to '(' (if matched)
+        if (paren_depth == 0 and scan > 0) {
+            // Extract the identifier chain before '('
+            const chain_end = scan;
+            var chain_start = chain_end;
+            while (chain_start > 0) {
+                const c = source[chain_start - 1];
+                if (std.ascii.isAlphanumeric(c) or c == '_' or c == '.') {
+                    chain_start -= 1;
+                } else {
+                    break;
+                }
+            }
+            if (chain_start < chain_end) {
+                result.after_receiver_dot.call_chain = source[chain_start..chain_end];
+                result.after_receiver_dot.chain_start = @intCast(chain_start);
+            }
+        }
+    }
+
+    return result;
 }
 
 /// Compute byte offset from line and character position in source text.
