@@ -38,6 +38,12 @@ pub const CompletionBuilder = struct {
     builtin_module_env: ?*ModuleEnv,
     debug: DebugFlags = .{},
     log_file: ?std.fs.File = null,
+    /// Lazily-built scope map, shared across methods that need scope info.
+    cached_scope: ?scope_map.ScopeMap = null,
+    /// The qualified module ident idx the cached scope was built for (to detect
+    /// mismatches). Uses qualified_module_ident so modules with the same bare
+    /// name in different packages don't collide.
+    cached_scope_module_ident: base.Ident.Idx = base.Ident.Idx.NONE,
 
     /// Initialize a new CompletionBuilder.
     pub fn init(allocator: Allocator, items: *std.ArrayList(CompletionItem), builtin_module_env: ?*ModuleEnv) CompletionBuilder {
@@ -64,6 +70,27 @@ pub const CompletionBuilder = struct {
     /// Clean up resources used by the builder.
     pub fn deinit(self: *CompletionBuilder) void {
         self.seen_labels.deinit();
+        if (self.cached_scope) |*s| s.deinit();
+    }
+
+    /// Get or build the scope map for the given module env.
+    /// Reuses a previously built scope if the module's qualified ident idx matches.
+    fn getOrBuildScope(self: *CompletionBuilder, module_env: *ModuleEnv) *scope_map.ScopeMap {
+        const module_ident = module_env.qualified_module_ident;
+        if (self.cached_scope != null and
+            !self.cached_scope_module_ident.isNone() and
+            @as(u32, @bitCast(self.cached_scope_module_ident)) == @as(u32, @bitCast(module_ident)))
+        {
+            return &self.cached_scope.?;
+        }
+        // Dispose of stale scope if the module changed.
+        if (self.cached_scope) |*old| old.deinit();
+
+        var scope = scope_map.ScopeMap.init(self.allocator);
+        scope.build(module_env) catch {};
+        self.cached_scope = scope;
+        self.cached_scope_module_ident = module_ident;
+        return &self.cached_scope.?;
     }
 
     fn logDebug(self: *CompletionBuilder, comptime fmt: []const u8, args: anytype) void {
@@ -424,11 +451,7 @@ pub const CompletionBuilder = struct {
         var type_writer = module_env.initTypeWriter() catch null;
         defer if (type_writer) |*tw| tw.deinit();
 
-        // Build scope map for local variable completions
-        var scope = scope_map.ScopeMap.init(self.allocator);
-        defer scope.deinit();
-        // Scope building is best-effort; partial completions are acceptable
-        scope.build(module_env) catch {};
+        const scope = self.getOrBuildScope(module_env);
 
         // Add local variables in scope at cursor position
         for (scope.bindings.items) |binding| {
@@ -931,13 +954,7 @@ pub const CompletionBuilder = struct {
     ) !void {
         self.logDebug("addMethodCompletions: looking for '{s}' at offset {d}", .{ variable_name, variable_start });
 
-        // Find the binding for this variable name (same as record field completion)
-        var scope = scope_map.ScopeMap.init(self.allocator);
-        defer scope.deinit();
-        scope.build(module_env) catch |err| {
-            self.logDebug("addMethodCompletions: scope.build failed: {s}", .{@errorName(err)});
-            return;
-        };
+        const scope = self.getOrBuildScope(module_env);
         self.logDebug("addMethodCompletions: scope has {d} bindings", .{scope.bindings.items.len});
 
         // Find the binding with matching name that's visible at the variable position
