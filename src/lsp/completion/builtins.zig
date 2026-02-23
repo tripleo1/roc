@@ -38,15 +38,21 @@ pub const BUILTIN_TYPES = [_][]const u8{
     "Num",
 };
 
+/// Compile-time hash map for O(1) builtin type lookups.
+const builtin_set = std.StaticStringMap(void).initComptime(blk: {
+    var entries: [BUILTIN_TYPES.len]struct { []const u8, void } = undefined;
+    for (BUILTIN_TYPES, 0..) |name, i| {
+        entries[i] = .{ name, {} };
+    }
+    break :blk &entries;
+});
+
 /// Check if a type name is a known builtin type.
 ///
 /// Returns true if the given type name matches one of Roc's
 /// builtin types (Str, List, Bool, numeric types, etc.).
 pub fn isBuiltinType(type_name: []const u8) bool {
-    for (BUILTIN_TYPES) |builtin| {
-        if (std.mem.eql(u8, type_name, builtin)) return true;
-    }
-    return false;
+    return builtin_set.has(type_name);
 }
 
 // Tests
