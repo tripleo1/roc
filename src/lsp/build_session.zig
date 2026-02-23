@@ -23,6 +23,8 @@ const Allocator = std.mem.Allocator;
 /// Encapsulates URI conversion, BuildEnv setup, building, and module lookup.
 pub const BuildSession = struct {
     allocator: Allocator,
+    /// Borrowed pointer to the BuildEnv for this build. Ownership stays with the
+    /// caller (typically SyntaxChecker via BuildEnvHandle); deinit does NOT free it.
     env: *BuildEnv,
     absolute_path: []const u8,
     build_succeeded: bool,
@@ -59,7 +61,10 @@ pub const BuildSession = struct {
             try allocator.dupe(u8, path);
         errdefer allocator.free(absolute_path);
 
-        // Set up file provider if override text provided
+        // Set up file provider if override text provided.
+        // SAFETY: provider_state lives on the stack and its address is passed to
+        // env via setFileProvider. This is safe because env.build() is synchronous
+        // and we clear the provider before returning.
         var provider_state: ?OverrideProviderState = null;
         if (override_text) |text| {
             provider_state = .{
