@@ -13,4 +13,10 @@ pub const computeOffset = context.computeOffset;
 
 pub const CompletionBuilder = builder.CompletionBuilder;
 
-test {}
+// Force transitive test compilation of imported modules.
+test {
+    std.testing.refAllDecls(@import("context.zig"));
+    std.testing.refAllDecls(@import("builtins.zig"));
+}
+
+const std = @import("std");
