@@ -3588,18 +3588,12 @@ fn checkExpr(self: *Self, expr_idx: CIR.Expr.Idx, env: *Env, expected: Expected)
                     // Check the field value expression
                     does_fx = try self.checkExpr(field.value, env, .no_expectation) or does_fx;
 
-                    // Create a fresh ext var for this field (must be fresh each iteration to avoid cycles)
-                    const ext_var = try self.freshFromContent(.{ .flex = Flex.init() }, env, expr_region);
-
                     // Create an unbound record with this field
                     const single_field_record = try self.freshFromContent(.{ .structure = .{
-                        .record = .{
-                            .fields = try self.types.appendRecordFields(&.{types_mod.RecordField{
-                                .name = field.name,
-                                .var_ = ModuleEnv.varFrom(field.value),
-                            }}),
-                            .ext = ext_var,
-                        },
+                        .record_unbound = try self.types.appendRecordFields(&.{types_mod.RecordField{
+                            .name = field.name,
+                            .var_ = ModuleEnv.varFrom(field.value),
+                        }}),
                     } }, env, expr_region);
 
                     // Unify this record update with the record we're updating
