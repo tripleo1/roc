@@ -75,17 +75,6 @@ pub const ScopeMap = struct {
         }.lessThan);
     }
 
-    /// Get all bindings, which callers should filter using `isVisibleAt`.
-    /// Returns an empty slice if no bindings are visible at the given offset.
-    pub fn getBindingsAtOffset(self: *const ScopeMap, offset: u32) []const Binding {
-        for (self.bindings.items) |binding| {
-            if (binding.visible_from <= offset and offset < binding.visible_to) {
-                return self.bindings.items;
-            }
-        }
-        return &.{};
-    }
-
     /// Check if a binding is visible at the given offset
     pub fn isVisibleAt(binding: Binding, offset: u32) bool {
         return binding.visible_from <= offset and offset < binding.visible_to;

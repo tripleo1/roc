@@ -117,14 +117,12 @@ test "ScopeMap.isVisibleAt handles max offset" {
     try std.testing.expect(ScopeMap.isVisibleAt(binding, std.math.maxInt(u32) - 1));
 }
 
-test "ScopeMap.getBindingsAtOffset returns empty for no bindings" {
+test "ScopeMap with no bindings has empty items" {
     const allocator = std.testing.allocator;
     var sm = ScopeMap.init(allocator);
     defer sm.deinit();
 
-    const bindings = sm.getBindingsAtOffset(50);
-    // Returns the full items slice which is empty
-    try std.testing.expectEqual(@as(usize, 0), bindings.len);
+    try std.testing.expectEqual(@as(usize, 0), sm.bindings.items.len);
 }
 
 test "ScopeMap manually added bindings are queryable" {
