@@ -655,14 +655,28 @@ pub const Coordinator = struct {
                 .shutdown => std.debug.print("[COORD] ENQUEUE shutdown\n", .{}),
             }
         }
-        self.task_channel.send(task) catch |err| switch (err) {
-            error.Closed => return, // shutting down, safe to drop
-            error.Timeout => unreachable, // send() waits indefinitely
-            error.OutOfMemory => return error.OutOfMemory,
-        };
+        // Increment inflight BEFORE sending to the channel. This ensures there is
+        // no window where a worker could recv, execute, and the coordinator could
+        // process the result (decrementing inflight) before we increment here.
         if (threads_available and self.mode == .multi_threaded) {
             _ = self.inflight.fetchAdd(1, .acquire);
         }
+        self.task_channel.send(task) catch |err| switch (err) {
+            error.Closed => {
+                // Undo the increment — shutting down, safe to drop
+                if (threads_available and self.mode == .multi_threaded) {
+                    _ = self.inflight.fetchSub(1, .release);
+                }
+                return;
+            },
+            error.Timeout => unreachable, // send() waits indefinitely
+            error.OutOfMemory => {
+                if (threads_available and self.mode == .multi_threaded) {
+                    _ = self.inflight.fetchSub(1, .release);
+                }
+                return error.OutOfMemory;
+            },
+        };
     }
 
     /// Enqueue a parse task for a module
@@ -804,7 +818,13 @@ pub const Coordinator = struct {
         return any_unblocked;
     }
 
-    /// Check if all work is complete
+    /// Check if all work is complete.
+    ///
+    /// Thread-safety: This is only called from the coordinator thread.
+    /// `total_remaining` is only mutated by the coordinator, so it's always fresh.
+    /// `inflight` is incremented *before* a task enters the channel and decremented
+    /// only when the coordinator processes the result, so there is no window where
+    /// the channel is empty and inflight is 0 while work is still pending.
     pub fn isComplete(self: *Coordinator) bool {
         return self.total_remaining == 0 and self.task_channel.isEmpty() and self.inflight.load(.acquire) == 0;
     }
@@ -2352,12 +2372,9 @@ pub const Coordinator = struct {
         defer worker_allocs.deinit();
 
         while (true) {
-            // Get next task from the channel (blocks with timeout)
-            const t = self.task_channel.recvTimeout(10_000_000) orelse {
-                // Check if we should shut down
-                if (self.task_channel.isClosed()) break;
-                continue;
-            };
+            // Block until a task is available. Returns null when the channel
+            // is closed and drained, meaning it's time to shut down.
+            const t = self.task_channel.recv() orelse break;
 
             // Execute task
             const result = self.executeTaskInline(t);
