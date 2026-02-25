@@ -2353,16 +2353,11 @@ pub const Coordinator = struct {
 
         while (true) {
             // Get next task from the channel (blocks with timeout)
-            const t = if (threads_available)
-                self.task_channel.recvTimeout(10_000_000) orelse { // 10ms timeout
-                    // Check if we should shut down
-                    if (self.task_channel.isClosed()) break;
-                    continue;
-                }
-            else
-                self.task_channel.tryRecv() orelse break;
-
-            if (t == .shutdown) break;
+            const t = self.task_channel.recvTimeout(10_000_000) orelse {
+                // Check if we should shut down
+                if (self.task_channel.isClosed()) break;
+                continue;
+            };
 
             // Execute task
             const result = self.executeTaskInline(t);
