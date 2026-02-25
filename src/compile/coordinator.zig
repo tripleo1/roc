@@ -655,12 +655,13 @@ pub const Coordinator = struct {
                 .shutdown => std.debug.print("[COORD] ENQUEUE shutdown\n", .{}),
             }
         }
+        self.task_channel.send(task) catch |err| switch (err) {
+            error.Closed => return, // shutting down, safe to drop
+            error.Timeout => unreachable, // send() waits indefinitely
+            error.OutOfMemory => return error.OutOfMemory,
+        };
         if (threads_available and self.mode == .multi_threaded) {
-            self.task_channel.send(task) catch {};
             _ = self.inflight.fetchAdd(1, .acquire);
-        } else {
-            // Single-threaded: use the channel without blocking (it won't block since we're the only user)
-            self.task_channel.send(task) catch {};
         }
     }
 
