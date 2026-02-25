@@ -657,6 +657,7 @@ pub const Coordinator = struct {
         }
         if (threads_available and self.mode == .multi_threaded) {
             self.task_channel.send(task) catch {};
+            _ = self.inflight.fetchAdd(1, .acquire);
         } else {
             // Single-threaded: use the channel without blocking (it won't block since we're the only user)
             self.task_channel.send(task) catch {};
@@ -2361,8 +2362,6 @@ pub const Coordinator = struct {
                 self.task_channel.tryRecv() orelse break;
 
             if (t == .shutdown) break;
-
-            _ = self.inflight.fetchAdd(1, .acquire);
 
             // Execute task
             const result = self.executeTaskInline(t);
