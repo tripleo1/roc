@@ -1930,7 +1930,8 @@ pub fn canonicalizeFile(
         },
         .type_module => {
             // Check if file has a main! function, making it a default app
-            const main_status = try self.checkMainFunction();
+            // Don't report errors here - validation will handle that
+            const main_status = try self.checkMainFunction(false);
             if (main_status == .valid) {
                 self.env.module_kind = .default_app;
                 self.env.defer_numeric_defaults = true;
@@ -2705,7 +2706,7 @@ pub fn validateForChecking(self: *Self) std.mem.Allocator.Error!void {
 
     switch (self.env.module_kind) {
         .type_module => |*main_type_ident| {
-            const main_status = try self.checkMainFunction();
+            const main_status = try self.checkMainFunction(true);
             const matching_type_result = self.findMatchingTypeIdent();
 
             // Check if we found a matching type and whether it's a nominal type
@@ -2751,7 +2752,7 @@ pub fn validateForChecking(self: *Self) std.mem.Allocator.Error!void {
 pub fn validateForExecution(self: *Self) std.mem.Allocator.Error!void {
     switch (self.env.module_kind) {
         .type_module => {
-            const main_status = try self.checkMainFunction();
+            const main_status = try self.checkMainFunction(true);
             if (main_status == .not_found) {
                 try self.reportExecutionRequiresAppOrDefaultApp();
             }
@@ -13361,7 +13362,7 @@ const MainFunctionStatus = enum { valid, invalid, not_found };
 
 /// Check if this module has a valid main! function (1 argument lambda).
 /// Reports an error if main! exists but has the wrong arity.
-fn checkMainFunction(self: *Self) std.mem.Allocator.Error!MainFunctionStatus {
+fn checkMainFunction(self: *Self, report_errors: bool) std.mem.Allocator.Error!MainFunctionStatus {
     const file = self.parse_ir.store.getFile();
 
     for (self.parse_ir.store.statementSlice(file.statements)) |stmt_id| {
@@ -13385,10 +13386,12 @@ fn checkMainFunction(self: *Self) std.mem.Allocator.Error!MainFunctionStatus {
                         if (params.len == 1) {
                             return .valid;
                         } else {
-                            try self.env.pushDiagnostic(Diagnostic{ .default_app_wrong_arity = .{
-                                .arity = @intCast(params.len),
-                                .region = region,
-                            } });
+                            if (report_errors) {
+                                try self.env.pushDiagnostic(Diagnostic{ .default_app_wrong_arity = .{
+                                    .arity = @intCast(params.len),
+                                    .region = region,
+                                } });
+                            }
                             return .invalid;
                         }
                     }
