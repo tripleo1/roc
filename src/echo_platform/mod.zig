@@ -16,6 +16,10 @@ pub const platform_main_source = @embedFile("platform/main.roc");
 /// Embedded source for the echo platform's Echo.roc module (hosted line! function).
 pub const echo_module_source = @embedFile("platform/Echo.roc");
 
+/// Static sentinel for RocOps.env — a valid non-null address that won't segfault
+/// if accidentally inspected in a debugger, unlike @ptrFromInt(1).
+const env_sentinel: u8 = 0;
+
 /// Echo host function: reads a RocStr arg and prints it + newline to stdout.
 /// Arguments are borrowed — refcounting is handled by the caller (RC insertion pass).
 pub fn echoHostedFn(_: *anyopaque, _: [*]u8, roc_str: *RocStr) callconv(.c) void {
@@ -117,7 +121,7 @@ pub fn makeDefaultRocOps(hosted_fns: []host_abi.HostedFn) host_abi.RocOps {
     };
 
     return .{
-        .env = @ptrFromInt(1), // Non-null dummy pointer
+        .env = @constCast(&env_sentinel),
         .roc_alloc = &fns.rocAlloc,
         .roc_dealloc = &fns.rocDealloc,
         .roc_realloc = &fns.rocRealloc,
