@@ -158,7 +158,7 @@ test "sanitizeUtf8: valid ASCII passes through unchanged" {
 }
 
 test "sanitizeUtf8: valid multibyte UTF-8 passes through unchanged" {
-    const input = "caf\xc3\xa9 \xe2\x9c\x93"; // "café ✓"
+    const input = "na\xc3\xafve \xe2\x9c\x93"; // "naïve ✓"
     const result = sanitizeUtf8(input, test_allocator);
     try testing.expectEqualStrings(input, result);
     try testing.expectEqual(input.ptr, result.ptr);
