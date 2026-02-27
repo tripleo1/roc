@@ -1275,7 +1275,8 @@ fn rocRun(ctx: *CliContext, args: cli_args.RunArgs) !void {
 /// On success, returns the file source (caller owns the allocation).
 /// Returns null if the file is not a default_app.
 fn readDefaultAppSource(ctx: *CliContext, file_path: []const u8) ?[]const u8 {
-    const source = std.fs.cwd().readFileAlloc(ctx.gpa, file_path, std.math.maxInt(usize)) catch return null;
+    const max_source_size = 256 * 1024 * 1024; // 256 MB
+    const source = std.fs.cwd().readFileAlloc(ctx.gpa, file_path, max_source_size) catch return null;
 
     const module_name = base.module_path.getModuleNameAlloc(ctx.arena, file_path) catch {
         ctx.gpa.free(source);

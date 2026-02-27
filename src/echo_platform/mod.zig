@@ -21,9 +21,21 @@ pub const echo_module_source = @embedFile("platform/Echo.roc");
 pub fn echoHostedFn(_: *anyopaque, _: [*]u8, roc_str: *RocStr) callconv(.c) void {
     const message = roc_str.asSlice();
     const stdout_file: std.fs.File = .stdout();
-    stdout_file.writeAll(message) catch {};
-    stdout_file.writeAll("\n") catch {};
+    stdout_file.writeAll(message) catch |err| handleStdoutError(err);
+    stdout_file.writeAll("\n") catch |err| handleStdoutError(err);
     // Returns {} (ZST) — no bytes to write to ret_bytes
+}
+
+/// Handle stdout write errors: exit cleanly on broken pipe (standard
+/// Unix behavior), crash on other errors.
+fn handleStdoutError(err: anyerror) noreturn {
+    switch (err) {
+        error.BrokenPipe => std.process.exit(0),
+        else => {
+            std.debug.print("echo!: stdout write failed: {}\n", .{err});
+            std.process.exit(1);
+        },
+    }
 }
 
 /// Create a minimal RocOps struct for default_app execution.
