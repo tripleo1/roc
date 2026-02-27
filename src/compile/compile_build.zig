@@ -1506,22 +1506,7 @@ pub const BuildEnv = struct {
             },
             .type_module => {
                 // Check if file has a main! function, making it a default app
-                const file2 = ast.store.getFile();
-                var has_main = false;
-                for (ast.store.statementSlice(file2.statements)) |stmt_id| {
-                    const stmt2 = ast.store.getStatement(stmt_id);
-                    if (stmt2 == .decl) {
-                        const pattern = ast.store.getPattern(stmt2.decl.pattern);
-                        if (pattern == .ident) {
-                            const ident_text = ast.resolve(pattern.ident.ident_tok);
-                            if (std.mem.eql(u8, ident_text, "main!")) {
-                                has_main = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                info.kind = if (has_main) .default_app else .type_module;
+                info.kind = if (ast.hasMainBangDecl()) .default_app else .type_module;
             },
             .default_app => {
                 info.kind = .default_app;

@@ -1298,18 +1298,7 @@ fn isDefaultApp(ctx: *CliContext, file_path: []const u8) bool {
     // Only headerless files (type_module) can be default apps
     if (header != .type_module) return false;
 
-    // Check for main! declaration
-    for (ast.store.statementSlice(file.statements)) |stmt_id| {
-        const stmt = ast.store.getStatement(stmt_id);
-        if (stmt == .decl) {
-            const pattern = ast.store.getPattern(stmt.decl.pattern);
-            if (pattern == .ident) {
-                const ident_text = ast.resolve(pattern.ident.ident_tok);
-                if (std.mem.eql(u8, ident_text, "main!")) return true;
-            }
-        }
-    }
-    return false;
+    return ast.hasMainBangDecl();
 }
 
 /// Virtual file provider for the echo platform.
