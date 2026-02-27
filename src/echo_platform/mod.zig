@@ -11,18 +11,19 @@ pub const host_abi = builtins.host_abi;
 pub const RocStr = builtins.str.RocStr;
 pub const RocList = builtins.list.RocList;
 
+/// Embedded source for the echo platform's main.roc (platform header + main_for_host!).
+pub const platform_main_source = @embedFile("platform/main.roc");
+/// Embedded source for the echo platform's Echo.roc module (hosted line! function).
+pub const echo_module_source = @embedFile("platform/Echo.roc");
+
 /// Echo host function: reads a RocStr arg and prints it + newline to stdout.
 /// Arguments are borrowed — refcounting is handled by the caller (RC insertion pass).
-pub fn echoHostedFn(_: *anyopaque, ret_bytes: [*]u8, roc_str: *RocStr) callconv(.c) void {
+pub fn echoHostedFn(_: *anyopaque, _: [*]u8, roc_str: *RocStr) callconv(.c) void {
     const message = roc_str.asSlice();
     const stdout_file: std.fs.File = .stdout();
     stdout_file.writeAll(message) catch {};
     stdout_file.writeAll("\n") catch {};
-
-    // Return Ok({}) as a Try({}, [..]) tag union.
-    // Layout: [Ok({}), Err(err)] — both payloads are zero-sized,
-    // so the discriminant is at offset 0. Tags sorted alphabetically: Err=0, Ok=1.
-    ret_bytes[0] = 1; // Ok discriminant
+    // Returns {} (ZST) — no bytes to write to ret_bytes
 }
 
 /// Create a minimal RocOps struct for default_app execution.

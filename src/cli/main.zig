@@ -1311,18 +1311,80 @@ fn isDefaultApp(ctx: *CliContext, file_path: []const u8) bool {
     return false;
 }
 
+/// Virtual file provider for the echo platform.
+/// Intercepts reads for the synthetic app source and embedded platform files,
+/// delegating all other reads to the real filesystem.
+const EchoFileProvider = struct {
+    app_abs_path: []const u8,
+    synthetic_app_source: []const u8,
+    platform_main_path: []const u8,
+    echo_module_path: []const u8,
+
+    const FileProvider = compile.package.FileProvider;
+
+    fn read(ctx_ptr: ?*anyopaque, path: []const u8, gpa: std.mem.Allocator) std.mem.Allocator.Error!?[]u8 {
+        const self: *@This() = @ptrCast(@alignCast(ctx_ptr.?));
+        if (std.mem.eql(u8, path, self.app_abs_path))
+            return try gpa.dupe(u8, self.synthetic_app_source);
+        if (std.mem.eql(u8, path, self.platform_main_path))
+            return try gpa.dupe(u8, echo_platform.platform_main_source);
+        if (std.mem.eql(u8, path, self.echo_module_path))
+            return try gpa.dupe(u8, echo_platform.echo_module_source);
+        return FileProvider.filesystem.read(null, path, gpa);
+    }
+
+    fn provider(self: *@This()) FileProvider {
+        return .{ .ctx = @ptrCast(self), .read = &@This().read };
+    }
+};
+
 /// Run a default_app (headerless file with main! and echo platform).
-/// This compiles the app with the dev backend, JIT-compiles main!, and
-/// executes it with a built-in echo! host function.
+/// This compiles the app with real platform .roc files through the standard
+/// multi-module pipeline, JIT-compiles main_for_host!, and executes it.
 fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     const HostedFn = echo_platform.host_abi.HostedFn;
 
-    // Phase 1: Create BuildEnv and compile
+    // Phase 1: Read original source and build synthetic app source
+    const original_source = std.fs.cwd().readFileAlloc(ctx.gpa, args.path, std.math.maxInt(usize)) catch |err| {
+        std.debug.print("Error reading {s}: {}\n", .{ args.path, err });
+        return error.CompilationFailed;
+    };
+    defer ctx.gpa.free(original_source);
+
+    // Resolve to absolute path using CWD, matching BuildEnv.makeAbsolute behavior
+    const cwd_tmp = std.process.getCwdAlloc(ctx.gpa) catch return error.OutOfMemory;
+    defer ctx.gpa.free(cwd_tmp);
+    const app_abs = std.fs.path.resolve(ctx.gpa, &.{ cwd_tmp, args.path }) catch return error.OutOfMemory;
+    defer ctx.gpa.free(app_abs);
+
+    // Virtual platform directory (deterministic, not on disk)
+    const platform_main_path = "/tmp/.roc_echo_platform/main.roc";
+    const echo_module_path = "/tmp/.roc_echo_platform/Echo.roc";
+
+    const header = std.fmt.allocPrint(
+        ctx.gpa,
+        "app [main!] {{ pf: platform \"{s}\" }}\n\nimport pf.Echo\n\necho! = |msg| Echo.line!(msg)\n\n",
+        .{platform_main_path},
+    ) catch return error.OutOfMemory;
+    defer ctx.gpa.free(header);
+
+    const synthetic_source = std.mem.concat(ctx.gpa, u8, &.{ header, original_source }) catch return error.OutOfMemory;
+    defer ctx.gpa.free(synthetic_source);
+
+    // Phase 2: Create BuildEnv with custom FileProvider and compile
     const thread_count: usize = 1;
     const mode: compile.package.Mode = .single_threaded;
 
     var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, @import("target.zig").RocTarget.detectNative());
     defer build_env.deinit();
+
+    var echo_fp = EchoFileProvider{
+        .app_abs_path = app_abs,
+        .synthetic_app_source = synthetic_source,
+        .platform_main_path = platform_main_path,
+        .echo_module_path = echo_module_path,
+    };
+    build_env.setFileProvider(echo_fp.provider());
 
     build_env.discoverDependencies(args.path) catch |err| {
         const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
@@ -1364,7 +1426,7 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     }
     if (total_error_count > 0) return error.CompilationFailed;
 
-    // Phase 2: Get compiled modules
+    // Phase 3: Get compiled modules
     const modules = build_env.getCompiledModules(ctx.arena) catch return error.OutOfMemory;
     if (modules.len == 0) return error.NoModulesCompiled;
 
@@ -1381,211 +1443,195 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
         module.imports.resolveImports(module, all_module_envs);
     }
 
-    const compiled_module_envs = all_module_envs[1..];
+    // Phase 4: Process hosted functions — assign global indices in CIR e_hosted_lambda nodes
+    {
+        const HostedCompiler = can.HostedCompiler;
+        var all_hosted_fns = std.ArrayList(HostedCompiler.HostedFunctionInfo).empty;
+        defer all_hosted_fns.deinit(ctx.gpa);
 
-    // Phase 3: Closure pipeline
-    for (compiled_module_envs) |module| {
-        if (!module.is_lambda_lifted) {
-            var top_level_patterns = std.AutoHashMap(can.CIR.Pattern.Idx, void).init(ctx.gpa);
-            defer top_level_patterns.deinit();
-            const stmts = module.store.sliceStatements(module.all_statements);
-            for (stmts) |stmt_idx| {
-                const stmt = module.store.getStatement(stmt_idx);
-                if (stmt == .s_decl) {
-                    top_level_patterns.put(stmt.s_decl.pattern, {}) catch {};
+        // Collect from platform sibling modules (e.g., Echo)
+        for (modules) |mod| {
+            if (!mod.is_platform_sibling) continue;
+
+            var module_fns = HostedCompiler.collectAndSortHostedFunctions(mod.env) catch continue;
+            defer module_fns.deinit(mod.env.gpa);
+
+            for (module_fns.items) |fn_info| {
+                const name_copy = ctx.gpa.dupe(u8, fn_info.name_text) catch continue;
+                mod.env.gpa.free(fn_info.name_text);
+                all_hosted_fns.append(ctx.gpa, .{
+                    .symbol_name = fn_info.symbol_name,
+                    .expr_idx = fn_info.expr_idx,
+                    .name_text = name_copy,
+                }) catch {
+                    ctx.gpa.free(name_copy);
+                    continue;
+                };
+            }
+        }
+
+        if (all_hosted_fns.items.len > 0) {
+            // Sort globally by qualified name
+            const SortContext = struct {
+                pub fn lessThan(_: void, a: HostedCompiler.HostedFunctionInfo, b: HostedCompiler.HostedFunctionInfo) bool {
+                    return std.mem.order(u8, a.name_text, b.name_text) == .lt;
+                }
+            };
+            std.mem.sort(HostedCompiler.HostedFunctionInfo, all_hosted_fns.items, {}, SortContext.lessThan);
+
+            // Deduplicate
+            var write_idx: usize = 0;
+            for (all_hosted_fns.items, 0..) |fn_info, read_idx| {
+                if (write_idx == 0 or !std.mem.eql(u8, all_hosted_fns.items[write_idx - 1].name_text, fn_info.name_text)) {
+                    if (write_idx != read_idx) {
+                        all_hosted_fns.items[write_idx] = fn_info;
+                    }
+                    write_idx += 1;
+                } else {
+                    ctx.gpa.free(fn_info.name_text);
                 }
             }
-            var lifter = can.LambdaLifter.init(ctx.gpa, module, &top_level_patterns);
-            defer lifter.deinit();
-            module.is_lambda_lifted = true;
-        }
-    }
+            all_hosted_fns.shrinkRetainingCapacity(write_idx);
 
-    var lambda_inference = can.LambdaSetInference.init(ctx.gpa);
-    defer lambda_inference.deinit();
-    var mutable_envs = try ctx.arena.alloc(*ModuleEnv, compiled_module_envs.len);
-    for (compiled_module_envs, 0..) |env, i| {
-        mutable_envs[i] = env;
-    }
-    lambda_inference.inferAll(mutable_envs) catch return error.OutOfMemory;
+            // Assign global indices in the CIR e_hosted_lambda nodes
+            for (modules) |mod| {
+                if (!mod.is_platform_sibling) continue;
+                const platform_env = mod.env;
 
-    for (mutable_envs) |module| {
-        if (!module.is_defunctionalized) {
-            var transformer = can.ClosureTransformer.initWithInference(ctx.gpa, module, &lambda_inference);
-            defer transformer.deinit();
-            module.is_defunctionalized = true;
-        }
-    }
+                const mod_all_defs = platform_env.store.sliceDefs(platform_env.all_defs);
+                for (mod_all_defs) |def_idx| {
+                    const def = platform_env.store.getDef(def_idx);
+                    const expr = platform_env.store.getExpr(def.expr);
 
-    // Phase 4: Find app module and main! expression
-    var app_module_idx: ?u32 = null;
-    var app_env: ?*ModuleEnv = null;
-    for (modules, 0..) |mod, i| {
-        if (mod.is_app) {
-            app_module_idx = @intCast(i + 1); // +1 for Builtin at index 0
-            app_env = mod.env;
-            break;
-        }
-    }
+                    if (expr == .e_hosted_lambda) {
+                        const hosted = expr.e_hosted_lambda;
+                        const local_name = platform_env.getIdent(hosted.symbol_name);
+                        const plat_module_name = base.module_path.getModuleName(platform_env.module_name);
+                        const qualified_name = std.fmt.allocPrint(ctx.gpa, "{s}.{s}", .{ plat_module_name, local_name }) catch continue;
+                        defer ctx.gpa.free(qualified_name);
 
-    const app_module = app_env orelse return error.NoModulesCompiled;
-    const app_idx = app_module_idx orelse return error.NoModulesCompiled;
+                        const stripped_name = if (std.mem.endsWith(u8, qualified_name, "!"))
+                            qualified_name[0 .. qualified_name.len - 1]
+                        else
+                            qualified_name;
 
-    // Find main! def in the app module
-    var main_expr_idx: ?can.CIR.Expr.Idx = null;
-    const app_defs = app_module.store.sliceDefs(app_module.all_defs);
-    for (app_defs) |def_idx| {
-        const def = app_module.store.getDef(def_idx);
-        const pattern = app_module.store.getPattern(def.pattern);
-        if (pattern == .assign) {
-            const ident_name = app_module.getIdent(pattern.assign.ident);
-            if (std.mem.eql(u8, ident_name, "main!")) {
-                main_expr_idx = def.expr;
-                break;
+                        for (all_hosted_fns.items, 0..) |fn_info, idx| {
+                            if (std.mem.eql(u8, fn_info.name_text, stripped_name)) {
+                                const hosted_index: u32 = @intCast(idx);
+
+                                // Update the CIR expression with the global index
+                                const expr_node_idx = @as(@TypeOf(platform_env.store.nodes).Idx, @enumFromInt(@intFromEnum(def.expr)));
+                                var expr_node = platform_env.store.nodes.get(expr_node_idx);
+                                var payload = expr_node.getPayload().expr_hosted_lambda;
+                                payload.index = hosted_index;
+                                expr_node.setPayload(.{ .expr_hosted_lambda = payload });
+                                platform_env.store.nodes.set(expr_node_idx, expr_node);
+
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Free name_text strings
+            for (all_hosted_fns.items) |fn_info| {
+                ctx.gpa.free(fn_info.name_text);
             }
         }
     }
-    const main_expr = main_expr_idx orelse return error.NoModulesCompiled;
 
-    // Phase 5: Build hosted function map with echo! at index 0
-    var hosted_functions = mono.Lower.HostedFunctionMap.init(ctx.gpa);
-    defer hosted_functions.deinit();
-    // echo! is already registered at index 0 in the CIR (from injectEchoPlatform)
-    // Register it in the HostedFunctionMap for the app module
-    for (app_defs) |def_idx| {
-        const def = app_module.store.getDef(def_idx);
-        const expr = app_module.store.getExpr(def.expr);
-        if (expr == .e_hosted_lambda) {
-            hosted_functions.put(mono.Lower.hostedFunctionKey(app_idx, @intFromEnum(def_idx)), expr.e_hosted_lambda.index) catch {};
-            hosted_functions.put(mono.Lower.hostedFunctionKey(app_idx, @intFromEnum(def.pattern)), expr.e_hosted_lambda.index) catch {};
-            hosted_functions.put(mono.Lower.hostedFunctionKey(app_idx, @intFromEnum(def.expr)), expr.e_hosted_lambda.index) catch {};
+    // Phase 5: Find platform module and main_for_host! expression
+    const platform_idx = BuildEnv.findPrimaryModuleIndex(modules) orelse return error.NoModulesCompiled;
+    const platform_module = modules[platform_idx];
+    const provides_entries = platform_module.provides_entries;
+    if (provides_entries.len == 0) return error.NoModulesCompiled;
+
+    // Find app module env (needed for e_lookup_required resolution of main!)
+    var app_module_env: ?*ModuleEnv = null;
+    for (modules) |mod| {
+        if (mod.is_app) {
+            app_module_env = mod.env;
         }
     }
 
-    // Phase 6: Create layout store and lower
-    const builtin_str = if (all_module_envs.len > 0) all_module_envs[0].idents.builtin_str else null;
-    var layout_store = layout.Store.init(all_module_envs, builtin_str, ctx.gpa, base.target.TargetUsize.native) catch
-        return error.OutOfMemory;
-    defer layout_store.deinit();
+    // Find main_for_host! CIR expression from platform provides entries
+    const platform_defs = platform_module.env.store.sliceDefs(platform_module.env.all_defs);
+    var main_for_host_expr: ?can.CIR.Expr.Idx = null;
 
-    var mono_store = mono.MonoExprStore.init(ctx.gpa);
-    defer mono_store.deinit();
-
-    var lowerer = mono.Lower.init(ctx.gpa, &mono_store, all_module_envs, &lambda_inference, &layout_store, app_module_idx, &hosted_functions);
-    defer lowerer.deinit();
-
-    // Lower main! expression (a lambda)
-    const lowered_expr_id = lowerer.lowerExpr(app_idx, main_expr) catch return error.OutOfMemory;
-
-    // Get the return layout from the lowered expression
-    const type_var = can.ModuleEnv.varFrom(main_expr);
-    var type_scope = @import("types").TypeScope.init(ctx.gpa);
-    defer type_scope.deinit();
-    const main_layout = layout_store.fromTypeVar(app_idx, type_var, &type_scope, null) catch
-        return error.OutOfMemory;
-
-    // Phase 7: RC insertion
-    var rc_pass = try mono.RcInsert.RcInsertPass.init(ctx.gpa, &mono_store, &layout_store);
-    defer rc_pass.deinit();
-    const mono_expr_id = rc_pass.insertRcOps(lowered_expr_id) catch lowered_expr_id;
-
-    // Phase 8: Generate native code
-    var memory_backend = backend.StaticDataInterner.MemoryBackend.init(ctx.gpa);
-    defer memory_backend.deinit();
-    var static_interner = backend.StaticDataInterner.init(ctx.gpa, memory_backend.backend());
-    defer static_interner.deinit();
-
-    var codegen = try backend.HostMonoExprCodeGen.init(ctx.gpa, &mono_store, &layout_store, &static_interner);
-    defer codegen.deinit();
-
-    // Compile procedures
-    const procs = mono_store.getProcs();
-    if (procs.len > 0) {
-        codegen.compileAllProcs(procs) catch return error.OutOfMemory;
-    }
-
-    // Generate entrypoint wrapper for main! (a lambda that takes List(Str) and returns Try)
-    // Get the function's arg and return layouts
-    const mono_expr = mono_store.getExpr(mono_expr_id);
-    var arg_layouts_buf: [1]layout.Idx = undefined;
-    var ret_layout: layout.Idx = main_layout;
-
-    if (mono_expr == .lambda) {
-        ret_layout = mono_expr.lambda.ret_layout;
-        // The lambda has one parameter (List Str)
-        const params = mono_store.getPatternSpan(mono_expr.lambda.params);
-        if (params.len > 0) {
-            const first_param = mono_store.getPattern(params[0]);
-            arg_layouts_buf[0] = switch (first_param) {
-                .bind => |b| b.layout_idx,
-                .wildcard => |w| w.layout_idx,
-                .int_literal => |i| i.layout_idx,
-                .float_literal => |f| f.layout_idx,
-                else => .zst,
-            };
-        } else {
-            // Zero-arg lambda, use ZST
-            arg_layouts_buf[0] = .zst;
+    for (provides_entries) |entry| {
+        for (platform_defs) |def_idx| {
+            const def = platform_module.env.store.getDef(def_idx);
+            const pattern = platform_module.env.store.getPattern(def.pattern);
+            if (pattern == .assign) {
+                const ident_name = platform_module.env.getIdent(pattern.assign.ident);
+                if (std.mem.eql(u8, ident_name, entry.roc_ident)) {
+                    main_for_host_expr = def.expr;
+                    break;
+                }
+            }
         }
-    } else {
-        // Not a lambda — generate as a zero-arg expression
-        const gen_result = codegen.generateCode(mono_expr_id, main_layout, 1) catch return error.OutOfMemory;
-        const code = gen_result.code;
-        var executable = backend.ExecutableMemory.initWithEntryOffset(code, gen_result.entry_offset) catch return error.OutOfMemory;
-        defer executable.deinit();
-
-        // Set up RocOps
-        var hosted_fn_array = [_]HostedFn{echo_platform.host_abi.hostedFn(&echo_platform.echoHostedFn)};
-        var roc_ops = echo_platform.makeDefaultRocOps(&hosted_fn_array);
-        var result_buf: [256]u8 = undefined;
-        executable.callWithResultPtrAndRocOps(@ptrCast(&result_buf), @ptrCast(&roc_ops));
-        std.process.exit(0);
     }
 
-    // Generate entrypoint wrapper with arg layouts
-    const export_info = codegen.generateEntrypointWrapper(
-        "roc__main",
-        mono_expr_id,
-        &arg_layouts_buf,
-        ret_layout,
-    ) catch return error.OutOfMemory;
+    const entrypoint_expr = main_for_host_expr orelse return error.NoModulesCompiled;
 
-    const code = codegen.getGeneratedCode();
+    // Phase 6: Initialize interpreter and evaluate main_for_host!
+    const import_mapping_mod = @import("types").import_mapping;
+    const builtin_types = build_env.builtin_modules.asBuiltinTypes();
+    const builtin_module_env_ptr = build_env.builtin_modules.builtin_module.env;
 
-    // Phase 9: Load into executable memory and execute
-    var executable = backend.ExecutableMemory.initWithEntryOffset(code, export_info.offset) catch return error.OutOfMemory;
-    defer executable.deinit();
+    // Empty import mapping (interpreter_shim also uses empty mapping for display names)
+    var empty_import_mapping = import_mapping_mod.ImportMapping.init(ctx.gpa);
+    defer empty_import_mapping.deinit();
 
-    // Set up echo! host function
+    // Cast all_module_envs to const slice for interpreter
+    const const_module_envs: []const *const ModuleEnv = @ptrCast(all_module_envs);
+
+    // Initialize interpreter: platform env as primary, all_module_envs as other_envs
+    // (resolveImports was called with all_module_envs, so resolved indices match)
+    var interpreter = eval.Interpreter.init(
+        ctx.gpa,
+        platform_module.env, // primary env (evaluating main_for_host!)
+        builtin_types,
+        builtin_module_env_ptr,
+        const_module_envs, // other_envs = same array used by resolveImports
+        &empty_import_mapping,
+        app_module_env, // app_env for requires clause (main!)
+        null, // constant_strings_arena (use internal)
+        @import("target.zig").RocTarget.detectNative(),
+    ) catch return error.CompilationFailed;
+    defer interpreter.deinitAndFreeOtherEnvs();
+
+    // Setup for-clause type mappings (platform → app)
+    interpreter.setupForClauseTypeMappings(platform_module.env) catch {};
+
+    // Build RocOps with echo! hosted function
     var hosted_fn_array = [_]HostedFn{echo_platform.host_abi.hostedFn(&echo_platform.echoHostedFn)};
     var roc_ops = echo_platform.makeDefaultRocOps(&hosted_fn_array);
 
-    // Build CLI args (List(Str)) from actual command-line arguments
+    // Build CLI args as RocList(RocStr)
     var cli_args_list = echo_platform.buildCliArgs(args.app_args, &roc_ops);
 
-    // Result buffer for the Try return value
-    var result_buf: [256]u8 align(16) = undefined;
+    // Result buffer for I32 return value (4 bytes, aligned)
+    var result_buf: [16]u8 align(16) = undefined;
 
-    // Call the entrypoint: fn(roc_ops, ret_ptr, args_ptr) callconv(.c) void
-    const func: *const fn (*anyopaque, *anyopaque, *anyopaque) callconv(.c) void = @ptrCast(@alignCast(executable.entryPtr()));
-    func(@ptrCast(&roc_ops), @ptrCast(&result_buf), @ptrCast(&cli_args_list));
+    // Evaluate main_for_host!(args) via interpreter
+    interpreter.evaluateExpression(
+        entrypoint_expr,
+        @ptrCast(&result_buf),
+        &roc_ops,
+        @ptrCast(&cli_args_list),
+    ) catch |err| {
+        std.debug.print("Interpreter error: {}\n", .{err});
+        std.process.exit(1);
+    };
 
-    // Decode the exit code from the Try result
-    // Try({}, [Exit(I32), ..]) is a tag union:
-    // Tags sorted alphabetically: Err=0, Ok=1
-    // For Ok({}): discriminant = 1, zero-sized payload
-    // For Err(Exit(code)): discriminant = 0, payload contains exit tag union
-    // A zero-sized result means the function returned {} (success)
-    const ret_layout_data = layout_store.getLayout(ret_layout);
-    const ret_size_align = layout_store.layoutSizeAlign(ret_layout_data);
-    if (ret_size_align.size == 0) {
-        // Zero-sized return type means always Ok({})
-        return;
+    // Read I32 exit code from result buffer, truncated to u8 for process exit
+    const exit_code = std.mem.bytesToValue(u32, result_buf[0..4]);
+    const exit_u8: u8 = @truncate(exit_code);
+    if (exit_u8 != 0) {
+        std.process.exit(exit_u8);
     }
-
-    // Non-zero sized: examine discriminant
-    // For now, just exit 0 (proper Try decoding can be added later)
-    return;
 }
 
 /// Append an argument to a command line buffer with proper Windows quoting.

@@ -2209,8 +2209,12 @@ fn lowerExprInner(self: *Self, module_env: *ModuleEnv, expr: CIR.Expr, region: R
             // the platform's `requires` clause. E.g., `main!` in `requires { main! : ... }`
 
             // Get the app module index (set during lowerer initialization)
-            const app_idx = self.app_module_idx orelse break :blk .{ .runtime_error = {} };
-            if (app_idx >= self.all_module_envs.len) break :blk .{ .runtime_error = {} };
+            const app_idx = self.app_module_idx orelse {
+                break :blk .{ .runtime_error = {} };
+            };
+            if (app_idx >= self.all_module_envs.len) {
+                break :blk .{ .runtime_error = {} };
+            }
 
             const app_env = self.all_module_envs[app_idx];
 

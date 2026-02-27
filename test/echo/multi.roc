@@ -1,4 +1,5 @@
 main! = |_args| {
-    echo!("Hello, ")?
+    echo!("Hello, ")
     echo!("World!")
+    Ok({})
 }
