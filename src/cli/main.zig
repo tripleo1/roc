@@ -964,8 +964,8 @@ fn rocRun(ctx: *CliContext, args: cli_args.RunArgs) !void {
     };
 
     // Check if this is a default_app (headerless file with main!)
-    if (isDefaultApp(ctx, args.path)) {
-        return rocRunDefaultApp(ctx, args);
+    if (readDefaultAppSource(ctx, args.path)) |source| {
+        return rocRunDefaultApp(ctx, args, source);
     }
 
     // First, parse the app file to get the platform reference
@@ -1272,15 +1272,20 @@ fn rocRun(ctx: *CliContext, args: cli_args.RunArgs) !void {
 }
 
 /// Check if a file is a default_app (headerless file with a main! function).
-/// This is a quick check that parses the file header to determine if it should
-/// be run with the echo platform.
-fn isDefaultApp(ctx: *CliContext, file_path: []const u8) bool {
-    const source = std.fs.cwd().readFileAlloc(ctx.gpa, file_path, std.math.maxInt(usize)) catch return false;
-    defer ctx.gpa.free(source);
+/// On success, returns the file source (caller owns the allocation).
+/// Returns null if the file is not a default_app.
+fn readDefaultAppSource(ctx: *CliContext, file_path: []const u8) ?[]const u8 {
+    const source = std.fs.cwd().readFileAlloc(ctx.gpa, file_path, std.math.maxInt(usize)) catch return null;
 
-    const module_name = base.module_path.getModuleNameAlloc(ctx.arena, file_path) catch return false;
+    const module_name = base.module_path.getModuleNameAlloc(ctx.arena, file_path) catch {
+        ctx.gpa.free(source);
+        return null;
+    };
 
-    var env = ModuleEnv.init(ctx.gpa, source) catch return false;
+    var env = ModuleEnv.init(ctx.gpa, source) catch {
+        ctx.gpa.free(source);
+        return null;
+    };
     defer env.deinit();
     env.common.source = source;
     env.module_name = module_name;
@@ -1289,16 +1294,27 @@ fn isDefaultApp(ctx: *CliContext, file_path: []const u8) bool {
     allocators.initInPlace(ctx.gpa);
     defer allocators.deinit();
 
-    const ast = parse.parse(&allocators, &env.common) catch return false;
+    const ast = parse.parse(&allocators, &env.common) catch {
+        ctx.gpa.free(source);
+        return null;
+    };
     defer ast.deinit();
 
     const file = ast.store.getFile();
     const header = ast.store.getHeader(file.header);
 
     // Only headerless files (type_module) can be default apps
-    if (header != .type_module) return false;
+    if (header != .type_module) {
+        ctx.gpa.free(source);
+        return null;
+    }
 
-    return ast.hasMainBangDecl();
+    if (!ast.hasMainBangDecl()) {
+        ctx.gpa.free(source);
+        return null;
+    }
+
+    return source;
 }
 
 /// Virtual file provider for the echo platform.
@@ -1331,15 +1347,9 @@ const EchoFileProvider = struct {
 /// Run a default_app (headerless file with main! and echo platform).
 /// This compiles the app with real platform .roc files through the standard
 /// multi-module pipeline, JIT-compiles main_for_host!, and executes it.
-fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
+fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs, original_source: []const u8) !void {
     const HostedFn = echo_platform.host_abi.HostedFn;
     const target = RocTarget.detectNative();
-
-    // Phase 1: Read original source and build synthetic app source
-    const original_source = std.fs.cwd().readFileAlloc(ctx.gpa, args.path, std.math.maxInt(usize)) catch |err| {
-        std.debug.print("Error reading {s}: {}\n", .{ args.path, err });
-        return error.CompilationFailed;
-    };
     defer ctx.gpa.free(original_source);
 
     const cwd_tmp = std.process.getCwdAlloc(ctx.gpa) catch return error.OutOfMemory;
