@@ -177,12 +177,12 @@ fn main(argc: c_int, argv: [*][*:0]u8) callconv(.c) c_int {
 // Use the actual RocStr and RocList from builtins
 const RocStr = builtins.str.RocStr;
 const RocList = builtins.list.RocList;
+const RocOps = builtins.host_abi.RocOps;
 
 /// Hosted function: Stderr.line! (index 0 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns {} and takes Str as argument
-fn hostedStderrLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-    _ = ops;
+fn hostedStderrLine(_: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
     _ = ret_ptr; // Return value is {} which is zero-sized
 
     // Arguments struct for single Str parameter
@@ -198,7 +198,7 @@ fn hostedStderrLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_pt
 /// Hosted function: Stdin.line! (index 1 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns Str and takes {} as argument
-fn hostedStdinLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
+fn hostedStdinLine(ops: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
     _ = args_ptr; // Argument is {} which is zero-sized
 
     // Read a line from stdin
@@ -240,9 +240,7 @@ fn hostedStdinLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_ptr
 /// Hosted function: Stdout.line! (index 2 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns {} and takes Str as argument
-fn hostedStdoutLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-    _ = ops;
-    _ = ret_ptr; // Return value is {} which is zero-sized
+fn hostedStdoutLine(_: *RocOps, _: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
 
     // Arguments struct for single Str parameter
     const Args = extern struct { str: RocStr };
@@ -257,9 +255,9 @@ fn hostedStdoutLine(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, args_pt
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name
 /// These correspond to the hosted functions defined in Stderr, Stdin, and Stdout Type Modules
 const hosted_function_ptrs = [_]builtins.host_abi.HostedFn{
-    hostedStderrLine, // Stderr.line! (index 0)
-    hostedStdinLine, // Stdin.line! (index 1)
-    hostedStdoutLine, // Stdout.line! (index 2)
+    builtins.host_abi.hostedFn(&hostedStderrLine), // Stderr.line! (index 0)
+    builtins.host_abi.hostedFn(&hostedStdinLine), // Stdin.line! (index 1)
+    builtins.host_abi.hostedFn(&hostedStdoutLine), // Stdout.line! (index 2)
 };
 
 /// Build a RocList of RocStr from argc/argv

@@ -933,11 +933,11 @@ fn hostedHostGetGreeting(ops: *builtins.host_abi.RocOps, ret_ptr: *anyopaque, ar
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name
 /// These correspond to the hosted functions defined in Stderr, Stdin, Stdout, Builder, and Host Type Modules
 const hosted_function_ptrs = [_]builtins.host_abi.HostedFn{
-    hostedBuilderPrintValue, // Builder.print_value! (index 0)
-    hostedHostGetGreeting, // Host.get_greeting! (index 1)
-    hostedStderrLine, // Stderr.line! (index 2)
-    hostedStdinLine, // Stdin.line! (index 3)
-    hostedStdoutLine, // Stdout.line! (index 4)
+    builtins.host_abi.hostedFn(&hostedBuilderPrintValue), // Builder.print_value! (index 0)
+    builtins.host_abi.hostedFn(&hostedHostGetGreeting), // Host.get_greeting! (index 1)
+    builtins.host_abi.hostedFn(&hostedStderrLine), // Stderr.line! (index 2)
+    builtins.host_abi.hostedFn(&hostedStdinLine), // Stdin.line! (index 3)
+    builtins.host_abi.hostedFn(&hostedStdoutLine), // Stdout.line! (index 4)
 };
 
 /// Platform host entrypoint

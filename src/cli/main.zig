@@ -43,6 +43,7 @@ const unbundle = @import("unbundle");
 const ipc = @import("ipc");
 const fmt = @import("fmt");
 const eval = @import("eval");
+const echo_platform = @import("echo_platform");
 const lsp = @import("lsp");
 const cli_repl = @import("repl.zig");
 
@@ -94,80 +95,6 @@ const backend = @import("backend");
 const mono = @import("mono");
 const layout = @import("layout");
 const Allocators = base.Allocators;
-
-/// ABI-compatible types for the echo platform host.
-/// These match the layout of types in src/builtins/host_abi.zig but are defined
-/// locally to avoid the @import("root") dependency loop that occurs when
-/// main.zig imports builtins (host_abi.zig uses @import("root") for tracy detection).
-const EchoHost = struct {
-    // Use *anyopaque for the ops parameter to break the circular type reference:
-    // HostedFn → *RocOps → HostedFunctions → [*]HostedFn
-    // This is ABI-compatible since RocOps* is just a pointer at the C level.
-    const HostedFn = *const fn (*anyopaque, *anyopaque, *anyopaque) callconv(.c) void;
-
-    const HostedFunctions = extern struct {
-        count: u32,
-        fns: [*]HostedFn,
-    };
-
-    const RocOps = extern struct {
-        env: *anyopaque,
-        roc_alloc: *const fn (*RocAlloc, *anyopaque) callconv(.c) void,
-        roc_dealloc: *const fn (*RocDealloc, *anyopaque) callconv(.c) void,
-        roc_realloc: *const fn (*RocRealloc, *anyopaque) callconv(.c) void,
-        roc_dbg: *const fn (*const RocDbg, *anyopaque) callconv(.c) void,
-        roc_expect_failed: *const fn (*const RocExpectFailed, *anyopaque) callconv(.c) void,
-        roc_crashed: *const fn (*const RocCrashed, *anyopaque) callconv(.c) void,
-        hosted_fns: HostedFunctions,
-    };
-
-    const RocAlloc = extern struct {
-        alignment: usize,
-        length: usize,
-        answer: *anyopaque,
-    };
-
-    const RocDealloc = extern struct {
-        alignment: usize,
-        ptr: *anyopaque,
-    };
-
-    const RocRealloc = extern struct {
-        alignment: usize,
-        new_length: usize,
-        answer: *anyopaque,
-    };
-
-    const RocCrashed = extern struct {
-        utf8_bytes: [*]u8,
-        len: usize,
-    };
-
-    const RocDbg = extern struct {
-        utf8_bytes: [*]u8,
-        len: usize,
-    };
-
-    const RocExpectFailed = extern struct {
-        utf8_bytes: [*]u8,
-        len: usize,
-    };
-
-    /// Read a RocStr from a pointer. Handles both small and heap strings.
-    fn readRocStr(ptr: *const anyopaque) []const u8 {
-        const SEAMLESS_SLICE_BIT: usize = @as(usize, @bitCast(@as(isize, std.math.minInt(isize))));
-        const str_data: *const extern struct { bytes: ?[*]u8, length: usize, capacity_or_alloc_ptr: usize } = @ptrCast(@alignCast(ptr));
-        const is_small = @as(isize, @bitCast(str_data.capacity_or_alloc_ptr)) < 0;
-        if (is_small) {
-            const raw: [*]const u8 = @ptrCast(str_data);
-            const small_len = raw[@sizeOf(@TypeOf(str_data.*)) - 1] ^ 0x80;
-            return raw[0..small_len];
-        } else {
-            const length = str_data.length & ~SEAMLESS_SLICE_BIT;
-            return str_data.bytes.?[0..length];
-        }
-    }
-};
 
 /// Embedded interpreter shim libraries for different targets.
 /// The native shim is used for roc run and native builds.
@@ -1388,7 +1315,7 @@ fn isDefaultApp(ctx: *CliContext, file_path: []const u8) bool {
 /// This compiles the app with the dev backend, JIT-compiles main!, and
 /// executes it with a built-in echo! host function.
 fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
-    const HostedFn = EchoHost.HostedFn;
+    const HostedFn = echo_platform.host_abi.HostedFn;
 
     // Phase 1: Create BuildEnv and compile
     const thread_count: usize = 1;
@@ -1608,8 +1535,8 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
         defer executable.deinit();
 
         // Set up RocOps
-        var hosted_fn_array = [_]HostedFn{&echoHostedFn};
-        var roc_ops = makeDefaultRocOps(&hosted_fn_array);
+        var hosted_fn_array = [_]HostedFn{echo_platform.host_abi.hostedFn(&echo_platform.echoHostedFn)};
+        var roc_ops = echo_platform.makeDefaultRocOps(&hosted_fn_array);
         var result_buf: [256]u8 = undefined;
         executable.callWithResultPtrAndRocOps(@ptrCast(&result_buf), @ptrCast(&roc_ops));
         std.process.exit(0);
@@ -1630,19 +1557,18 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     defer executable.deinit();
 
     // Set up echo! host function
-    var hosted_fn_array = [_]HostedFn{&echoHostedFn};
-    var roc_ops = makeDefaultRocOps(&hosted_fn_array);
+    var hosted_fn_array = [_]HostedFn{echo_platform.host_abi.hostedFn(&echo_platform.echoHostedFn)};
+    var roc_ops = echo_platform.makeDefaultRocOps(&hosted_fn_array);
 
-    // Build empty CLI args (List(Str))
-    // For now, pass empty list. CLI args support can be added later.
-    var empty_list = [_]u8{0} ** 24; // RocList is 24 bytes: bytes=null, length=0, capacity=0
+    // Build CLI args (List(Str)) from actual command-line arguments
+    var cli_args_list = echo_platform.buildCliArgs(args.app_args, &roc_ops);
 
     // Result buffer for the Try return value
     var result_buf: [256]u8 align(16) = undefined;
 
     // Call the entrypoint: fn(roc_ops, ret_ptr, args_ptr) callconv(.c) void
     const func: *const fn (*anyopaque, *anyopaque, *anyopaque) callconv(.c) void = @ptrCast(@alignCast(executable.entryPtr()));
-    func(@ptrCast(&roc_ops), @ptrCast(&result_buf), @ptrCast(&empty_list));
+    func(@ptrCast(&roc_ops), @ptrCast(&result_buf), @ptrCast(&cli_args_list));
 
     // Decode the exit code from the Try result
     // Try({}, [Exit(I32), ..]) is a tag union:
@@ -1660,78 +1586,6 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     // Non-zero sized: examine discriminant
     // For now, just exit 0 (proper Try decoding can be added later)
     return;
-}
-
-/// Echo host function: reads a RocStr arg and prints it + newline to stdout.
-/// Arguments are borrowed — refcounting is handled by the caller (RC insertion pass).
-fn echoHostedFn(_: *anyopaque, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-    const message = EchoHost.readRocStr(args_ptr);
-    const stdout_file: std.fs.File = .stdout();
-    stdout_file.writeAll(message) catch {};
-    stdout_file.writeAll("\n") catch {};
-
-    // Return Ok({}) as a Try({}, [..]) tag union.
-    // Layout: [Ok({}), Err(err)] — both payloads are zero-sized,
-    // so the discriminant is at offset 0. Tags sorted alphabetically: Err=0, Ok=1.
-    const ret_bytes: [*]u8 = @ptrCast(ret_ptr);
-    ret_bytes[0] = 1; // Ok discriminant
-}
-
-/// Create a minimal RocOps struct for default_app execution.
-fn makeDefaultRocOps(hosted_fns: []EchoHost.HostedFn) EchoHost.RocOps {
-    const fns = struct {
-        fn rocAlloc(alloc_args: *EchoHost.RocAlloc, _: *anyopaque) callconv(.c) void {
-            const allocator = std.heap.page_allocator;
-            const align_enum = std.mem.Alignment.fromByteUnits(@max(alloc_args.alignment, @alignOf(usize)));
-            const result = allocator.rawAlloc(alloc_args.length, align_enum, @returnAddress()) orelse {
-                std.debug.print("roc_alloc failed: OOM\n", .{});
-                std.process.exit(1);
-            };
-            alloc_args.answer = @ptrCast(result);
-        }
-
-        fn rocDealloc(_: *EchoHost.RocDealloc, _: *anyopaque) callconv(.c) void {
-            // No-op for simplicity — short-lived process
-        }
-
-        fn rocRealloc(_: *EchoHost.RocRealloc, _: *anyopaque) callconv(.c) void {
-            // Simplified: no-op for short-lived process
-        }
-
-        fn rocDbg(dbg_args: *const EchoHost.RocDbg, _: *anyopaque) callconv(.c) void {
-            const msg = dbg_args.utf8_bytes[0..dbg_args.len];
-            const stderr_file: std.fs.File = .stderr();
-            stderr_file.writeAll("[dbg] ") catch {};
-            stderr_file.writeAll(msg) catch {};
-            stderr_file.writeAll("\n") catch {};
-        }
-        fn rocExpectFailed(expect_args: *const EchoHost.RocExpectFailed, _: *anyopaque) callconv(.c) void {
-            const msg = expect_args.utf8_bytes[0..expect_args.len];
-            const stderr_file: std.fs.File = .stderr();
-            stderr_file.writeAll("Expect failed: ") catch {};
-            stderr_file.writeAll(msg) catch {};
-            stderr_file.writeAll("\n") catch {};
-        }
-        fn rocCrashed(crash_args: *const EchoHost.RocCrashed, _: *anyopaque) callconv(.c) void {
-            const msg = crash_args.utf8_bytes[0..crash_args.len];
-            const stderr_file: std.fs.File = .stderr();
-            stderr_file.writeAll("Roc crashed: ") catch {};
-            stderr_file.writeAll(msg) catch {};
-            stderr_file.writeAll("\n") catch {};
-            std.process.exit(1);
-        }
-    };
-
-    return .{
-        .env = @ptrFromInt(1), // Non-null dummy pointer
-        .roc_alloc = &fns.rocAlloc,
-        .roc_dealloc = &fns.rocDealloc,
-        .roc_realloc = &fns.rocRealloc,
-        .roc_dbg = &fns.rocDbg,
-        .roc_expect_failed = &fns.rocExpectFailed,
-        .roc_crashed = &fns.rocCrashed,
-        .hosted_fns = .{ .count = @intCast(hosted_fns.len), .fns = hosted_fns.ptr },
-    };
 }
 
 /// Append an argument to a command line buffer with proper Windows quoting.
