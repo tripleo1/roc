@@ -182,13 +182,7 @@ const RocOps = builtins.host_abi.RocOps;
 /// Hosted function: Stderr.line! (index 0 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns {} and takes Str as argument
-fn hostedStderrLine(_: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-    _ = ret_ptr; // Return value is {} which is zero-sized
-
-    // Arguments struct for single Str parameter
-    const Args = extern struct { str: RocStr };
-    const args: *Args = @ptrCast(@alignCast(args_ptr));
-
+fn hostedStderrLine(_: *anyopaque, _: *anyopaque, args: *const extern struct { str: RocStr }) callconv(.c) void {
     const message = args.str.asSlice();
     const stderr: std.fs.File = .stderr();
     stderr.writeAll(message) catch {};
@@ -198,22 +192,18 @@ fn hostedStderrLine(_: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callc
 /// Hosted function: Stdin.line! (index 1 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns Str and takes {} as argument
-fn hostedStdinLine(ops: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-    _ = args_ptr; // Argument is {} which is zero-sized
-
+fn hostedStdinLine(ops: *RocOps, result: *RocStr, _: *anyopaque) callconv(.c) void {
     // Read a line from stdin
     var buffer: [4096]u8 = undefined;
     const stdin_file: std.fs.File = .stdin();
     const bytes_read = stdin_file.read(&buffer) catch {
         // Return empty string on error
-        const result: *RocStr = @ptrCast(@alignCast(ret_ptr));
         result.* = RocStr.empty();
         return;
     };
 
     // Handle EOF (no bytes read)
     if (bytes_read == 0) {
-        const result: *RocStr = @ptrCast(@alignCast(ret_ptr));
         result.* = RocStr.empty();
         return;
     }
@@ -233,19 +223,13 @@ fn hostedStdinLine(ops: *RocOps, ret_ptr: *anyopaque, args_ptr: *anyopaque) call
     // Create RocStr from the read line and return it
     // RocStr.fromSlice handles allocation internally (either inline for small strings
     // or via roc_alloc for big strings with proper refcount tracking)
-    const result: *RocStr = @ptrCast(@alignCast(ret_ptr));
     result.* = RocStr.fromSlice(line, ops);
 }
 
 /// Hosted function: Stdout.line! (index 2 - sorted alphabetically)
 /// Follows RocCall ABI: (ops, ret_ptr, args_ptr)
 /// Returns {} and takes Str as argument
-fn hostedStdoutLine(_: *RocOps, _: *anyopaque, args_ptr: *anyopaque) callconv(.c) void {
-
-    // Arguments struct for single Str parameter
-    const Args = extern struct { str: RocStr };
-    const args: *Args = @ptrCast(@alignCast(args_ptr));
-
+fn hostedStdoutLine(_: *anyopaque, _: *anyopaque, args: *const extern struct { str: RocStr }) callconv(.c) void {
     const message = args.str.asSlice();
     const stdout: std.fs.File = .stdout();
     stdout.writeAll(message) catch {};
