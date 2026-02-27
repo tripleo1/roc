@@ -1347,8 +1347,14 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     const app_abs = std.fs.path.resolve(ctx.gpa, &.{ cwd_tmp, args.path }) catch return error.OutOfMemory;
     defer ctx.gpa.free(app_abs);
 
-    const platform_main_path = "/tmp/.roc_echo_platform/main.roc";
-    const echo_module_path = "/tmp/.roc_echo_platform/Echo.roc";
+    // Virtual paths for the echo platform — intercepted by EchoFileProvider,
+    // never actually read from disk. Derived from the app's directory so they
+    // are valid absolute paths on any OS.
+    const app_dir = std.fs.path.dirname(app_abs) orelse ".";
+    const platform_main_path = std.fs.path.join(ctx.gpa, &.{ app_dir, ".roc_echo_platform", "main.roc" }) catch return error.OutOfMemory;
+    defer ctx.gpa.free(platform_main_path);
+    const echo_module_path = std.fs.path.join(ctx.gpa, &.{ app_dir, ".roc_echo_platform", "Echo.roc" }) catch return error.OutOfMemory;
+    defer ctx.gpa.free(echo_module_path);
 
     const header = std.fmt.allocPrint(
         ctx.gpa,
