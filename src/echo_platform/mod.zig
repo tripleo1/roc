@@ -29,22 +29,55 @@ pub fn echoHostedFn(_: *anyopaque, _: [*]u8, roc_str: *RocStr) callconv(.c) void
 /// Create a minimal RocOps struct for default_app execution.
 pub fn makeDefaultRocOps(hosted_fns: []host_abi.HostedFn) host_abi.RocOps {
     const fns = struct {
+        const size_prefix = @sizeOf(usize);
+
+        /// Allocate with a size prefix so realloc/dealloc can recover the old length.
         fn rocAlloc(alloc_args: *host_abi.RocAlloc, _: *anyopaque) callconv(.c) void {
             const allocator = std.heap.page_allocator;
+            const total = alloc_args.length + size_prefix;
             const align_enum = std.mem.Alignment.fromByteUnits(@max(alloc_args.alignment, @alignOf(usize)));
-            const result = allocator.rawAlloc(alloc_args.length, align_enum, @returnAddress()) orelse {
+            const raw = allocator.rawAlloc(total, align_enum, @returnAddress()) orelse {
                 std.debug.print("roc_alloc failed: OOM\n", .{});
                 std.process.exit(1);
             };
-            alloc_args.answer = @ptrCast(result);
+            // Store the allocation length in the prefix
+            const size_slot: *usize = @ptrCast(@alignCast(raw));
+            size_slot.* = alloc_args.length;
+            alloc_args.answer = @ptrCast(raw + size_prefix);
         }
 
         fn rocDealloc(_: *host_abi.RocDealloc, _: *anyopaque) callconv(.c) void {
-            // No-op for simplicity — short-lived process
+            // No-op for simplicity — short-lived process, pages freed on exit
         }
 
-        fn rocRealloc(_: *host_abi.RocRealloc, _: *anyopaque) callconv(.c) void {
-            // Simplified: no-op for short-lived process
+        fn rocRealloc(realloc_args: *host_abi.RocRealloc, _: *anyopaque) callconv(.c) void {
+            const allocator = std.heap.page_allocator;
+            const align_enum = std.mem.Alignment.fromByteUnits(@max(realloc_args.alignment, @alignOf(usize)));
+
+            // Read old size from prefix
+            const old_ptr: [*]u8 = @ptrCast(realloc_args.answer);
+            const old_raw = old_ptr - size_prefix;
+            const old_size: usize = @as(*const usize, @ptrCast(@alignCast(old_raw))).*;
+
+            // Allocate new block with size prefix
+            const new_total = realloc_args.new_length + size_prefix;
+            const new_raw = allocator.rawAlloc(new_total, align_enum, @returnAddress()) orelse {
+                std.debug.print("roc_realloc failed: OOM\n", .{});
+                std.process.exit(1);
+            };
+
+            // Write new size prefix
+            const new_size_slot: *usize = @ptrCast(@alignCast(new_raw));
+            new_size_slot.* = realloc_args.new_length;
+            const new_ptr = new_raw + size_prefix;
+
+            // Copy old data (only up to the smaller of old/new sizes)
+            const copy_len = @min(old_size, realloc_args.new_length);
+            if (copy_len > 0) {
+                @memcpy(new_ptr[0..copy_len], old_ptr[0..copy_len]);
+            }
+
+            realloc_args.answer = @ptrCast(new_ptr);
         }
 
         fn rocDbg(dbg_args: *const host_abi.RocDbg, _: *anyopaque) callconv(.c) void {
