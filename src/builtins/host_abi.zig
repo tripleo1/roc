@@ -49,6 +49,18 @@ pub const HostedFn = *const fn (*anyopaque, *anyopaque, *anyopaque) callconv(.c)
 /// (e.g. `*RocOps`, `*RocStr`, `[*]u8`), but must be stored as `HostedFn` which
 /// uses `*anyopaque` for all parameters. This helper performs that cast.
 pub fn hostedFn(func: anytype) HostedFn {
+    const T = @TypeOf(func);
+    const info = @typeInfo(T);
+    if (info == .pointer) {
+        const child = @typeInfo(info.pointer.child);
+        if (child == .@"fn") {
+            const f = child.@"fn";
+            if (f.params.len != 3)
+                @compileError("hostedFn: function must take exactly 3 parameters (ops, ret_ptr, args_ptr)");
+            if (f.return_type != void)
+                @compileError("hostedFn: function must return void");
+        }
+    }
     return @ptrCast(func);
 }
 
