@@ -95,6 +95,7 @@ const backend = @import("backend");
 const mono = @import("mono");
 const layout = @import("layout");
 const Allocators = base.Allocators;
+const RocTarget = @import("target.zig").RocTarget;
 
 /// Embedded interpreter shim libraries for different targets.
 /// The native shim is used for roc run and native builds.
@@ -124,7 +125,7 @@ const ShimLibraries = struct {
     const arm64win = if (builtin.is_test) &[_]u8{} else @embedFile("targets/arm64win/roc_interpreter_shim.lib");
 
     /// Get the appropriate shim library bytes for the given target
-    pub fn forTarget(target: roc_target.RocTarget) []const u8 {
+    pub fn forTarget(target: RocTarget) []const u8 {
         return switch (target) {
             .x64musl => x64musl,
             .arm64musl => arm64musl,
@@ -175,7 +176,7 @@ const BuiltinsObjects = struct {
     const arm64mac = if (builtin.is_test) &[_]u8{} else @embedFile("targets/arm64mac/libroc_builtins.a");
 
     /// Get the appropriate builtins library bytes for the given target
-    pub fn forTarget(target: roc_target.RocTarget) []const u8 {
+    pub fn forTarget(target: RocTarget) []const u8 {
         return switch (target) {
             .x64musl => x64musl,
             .arm64musl => arm64musl,
@@ -192,7 +193,7 @@ const BuiltinsObjects = struct {
     }
 
     /// Get the filename for builtins library on given target
-    pub fn filename(target: roc_target.RocTarget) []const u8 {
+    pub fn filename(target: RocTarget) []const u8 {
         return switch (target.toOsTag()) {
             .windows => "roc_builtins.lib",
             else => "libroc_builtins.a",
@@ -993,7 +994,7 @@ fn rocRun(ctx: *CliContext, args: cli_args.RunArgs) !void {
             // Select target: if --target is provided, use that; otherwise try native then fallback
             if (args.target) |target_str| {
                 // User explicitly specified a target
-                const parsed_target = roc_target.RocTarget.fromString(target_str) orelse {
+                const parsed_target = RocTarget.fromString(target_str) orelse {
                     const result = platform_validation.targets_validator.ValidationResult{
                         .invalid_target = .{ .target_str = target_str },
                     };
@@ -1343,6 +1344,7 @@ const EchoFileProvider = struct {
 /// multi-module pipeline, JIT-compiles main_for_host!, and executes it.
 fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     const HostedFn = echo_platform.host_abi.HostedFn;
+    const target = RocTarget.detectNative();
 
     // Phase 1: Read original source and build synthetic app source
     const original_source = std.fs.cwd().readFileAlloc(ctx.gpa, args.path, std.math.maxInt(usize)) catch |err| {
@@ -1351,13 +1353,11 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     };
     defer ctx.gpa.free(original_source);
 
-    // Resolve to absolute path using CWD, matching BuildEnv.makeAbsolute behavior
     const cwd_tmp = std.process.getCwdAlloc(ctx.gpa) catch return error.OutOfMemory;
     defer ctx.gpa.free(cwd_tmp);
     const app_abs = std.fs.path.resolve(ctx.gpa, &.{ cwd_tmp, args.path }) catch return error.OutOfMemory;
     defer ctx.gpa.free(app_abs);
 
-    // Virtual platform directory (deterministic, not on disk)
     const platform_main_path = "/tmp/.roc_echo_platform/main.roc";
     const echo_module_path = "/tmp/.roc_echo_platform/Echo.roc";
 
@@ -1371,11 +1371,8 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     const synthetic_source = std.mem.concat(ctx.gpa, u8, &.{ header, original_source }) catch return error.OutOfMemory;
     defer ctx.gpa.free(synthetic_source);
 
-    // Phase 2: Create BuildEnv with custom FileProvider and compile
-    const thread_count: usize = 1;
-    const mode: compile.package.Mode = .single_threaded;
-
-    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, @import("target.zig").RocTarget.detectNative());
+    // Phase 2: Compile through standard pipeline
+    var build_env = try BuildEnv.init(ctx.gpa, .single_threaded, 1, target);
     defer build_env.deinit();
 
     var echo_fp = EchoFileProvider{
@@ -1387,246 +1384,45 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs) !void {
     build_env.setFileProvider(echo_fp.provider());
 
     build_env.discoverDependencies(args.path) catch |err| {
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
     build_env.compileDiscovered() catch |err| {
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
-    // Drain and report diagnostics
-    const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-    defer build_env.freeDrainedReports(drained);
-    var total_error_count: usize = 0;
-    for (drained) |mod| {
-        for (mod.reports) |*report| {
-            if (report.severity == .runtime_error or report.severity == .fatal) total_error_count += 1;
-            const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-            const config = reporting.ReportingConfig.initColorTerminal();
-            reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-        }
-    }
-    if (total_error_count > 0) return error.CompilationFailed;
+    const diag = build_env.renderDiagnostics(ctx.io.stderr());
+    if (diag.errors > 0) return error.CompilationFailed;
 
-    // Phase 3: Get compiled modules
-    const modules = build_env.getCompiledModules(ctx.arena) catch return error.OutOfMemory;
-    if (modules.len == 0) return error.NoModulesCompiled;
+    // Phase 3: Prepare for execution
+    var resolved = try build_env.getResolvedModuleEnvs(ctx.arena);
+    try resolved.processHostedFunctions(ctx.gpa, null);
+    const entry = try resolved.findEntrypoint();
 
-    // Build all_module_envs with Builtin at index 0
-    const builtin_env = build_env.builtin_modules.builtin_module.env;
-    var all_module_envs = try ctx.arena.alloc(*ModuleEnv, modules.len + 1);
-    all_module_envs[0] = builtin_env;
-    for (modules, 0..) |mod, i| {
-        all_module_envs[i + 1] = mod.env;
-    }
-
-    // Re-resolve imports
-    for (all_module_envs) |module| {
-        module.imports.resolveImports(module, all_module_envs);
-    }
-
-    // Phase 4: Process hosted functions — assign global indices in CIR e_hosted_lambda nodes
-    {
-        const HostedCompiler = can.HostedCompiler;
-        var all_hosted_fns = std.ArrayList(HostedCompiler.HostedFunctionInfo).empty;
-        defer all_hosted_fns.deinit(ctx.gpa);
-
-        // Collect from platform sibling modules (e.g., Echo)
-        for (modules) |mod| {
-            if (!mod.is_platform_sibling) continue;
-
-            var module_fns = HostedCompiler.collectAndSortHostedFunctions(mod.env) catch continue;
-            defer module_fns.deinit(mod.env.gpa);
-
-            for (module_fns.items) |fn_info| {
-                const name_copy = ctx.gpa.dupe(u8, fn_info.name_text) catch continue;
-                mod.env.gpa.free(fn_info.name_text);
-                all_hosted_fns.append(ctx.gpa, .{
-                    .symbol_name = fn_info.symbol_name,
-                    .expr_idx = fn_info.expr_idx,
-                    .name_text = name_copy,
-                }) catch {
-                    ctx.gpa.free(name_copy);
-                    continue;
-                };
-            }
-        }
-
-        if (all_hosted_fns.items.len > 0) {
-            // Sort globally by qualified name
-            const SortContext = struct {
-                pub fn lessThan(_: void, a: HostedCompiler.HostedFunctionInfo, b: HostedCompiler.HostedFunctionInfo) bool {
-                    return std.mem.order(u8, a.name_text, b.name_text) == .lt;
-                }
-            };
-            std.mem.sort(HostedCompiler.HostedFunctionInfo, all_hosted_fns.items, {}, SortContext.lessThan);
-
-            // Deduplicate
-            var write_idx: usize = 0;
-            for (all_hosted_fns.items, 0..) |fn_info, read_idx| {
-                if (write_idx == 0 or !std.mem.eql(u8, all_hosted_fns.items[write_idx - 1].name_text, fn_info.name_text)) {
-                    if (write_idx != read_idx) {
-                        all_hosted_fns.items[write_idx] = fn_info;
-                    }
-                    write_idx += 1;
-                } else {
-                    ctx.gpa.free(fn_info.name_text);
-                }
-            }
-            all_hosted_fns.shrinkRetainingCapacity(write_idx);
-
-            // Assign global indices in the CIR e_hosted_lambda nodes
-            for (modules) |mod| {
-                if (!mod.is_platform_sibling) continue;
-                const platform_env = mod.env;
-
-                const mod_all_defs = platform_env.store.sliceDefs(platform_env.all_defs);
-                for (mod_all_defs) |def_idx| {
-                    const def = platform_env.store.getDef(def_idx);
-                    const expr = platform_env.store.getExpr(def.expr);
-
-                    if (expr == .e_hosted_lambda) {
-                        const hosted = expr.e_hosted_lambda;
-                        const local_name = platform_env.getIdent(hosted.symbol_name);
-                        const plat_module_name = base.module_path.getModuleName(platform_env.module_name);
-                        const qualified_name = std.fmt.allocPrint(ctx.gpa, "{s}.{s}", .{ plat_module_name, local_name }) catch continue;
-                        defer ctx.gpa.free(qualified_name);
-
-                        const stripped_name = if (std.mem.endsWith(u8, qualified_name, "!"))
-                            qualified_name[0 .. qualified_name.len - 1]
-                        else
-                            qualified_name;
-
-                        for (all_hosted_fns.items, 0..) |fn_info, idx| {
-                            if (std.mem.eql(u8, fn_info.name_text, stripped_name)) {
-                                const hosted_index: u32 = @intCast(idx);
-
-                                // Update the CIR expression with the global index
-                                const expr_node_idx = @as(@TypeOf(platform_env.store.nodes).Idx, @enumFromInt(@intFromEnum(def.expr)));
-                                var expr_node = platform_env.store.nodes.get(expr_node_idx);
-                                var payload = expr_node.getPayload().expr_hosted_lambda;
-                                payload.index = hosted_index;
-                                expr_node.setPayload(.{ .expr_hosted_lambda = payload });
-                                platform_env.store.nodes.set(expr_node_idx, expr_node);
-
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Free name_text strings
-            for (all_hosted_fns.items) |fn_info| {
-                ctx.gpa.free(fn_info.name_text);
-            }
-        }
-    }
-
-    // Phase 5: Find platform module and main_for_host! expression
-    const platform_idx = BuildEnv.findPrimaryModuleIndex(modules) orelse return error.NoModulesCompiled;
-    const platform_module = modules[platform_idx];
-    const provides_entries = platform_module.provides_entries;
-    if (provides_entries.len == 0) return error.NoModulesCompiled;
-
-    // Find app module env (needed for e_lookup_required resolution of main!)
-    var app_module_env: ?*ModuleEnv = null;
-    for (modules) |mod| {
-        if (mod.is_app) {
-            app_module_env = mod.env;
-        }
-    }
-
-    // Find main_for_host! CIR expression from platform provides entries
-    const platform_defs = platform_module.env.store.sliceDefs(platform_module.env.all_defs);
-    var main_for_host_expr: ?can.CIR.Expr.Idx = null;
-
-    for (provides_entries) |entry| {
-        for (platform_defs) |def_idx| {
-            const def = platform_module.env.store.getDef(def_idx);
-            const pattern = platform_module.env.store.getPattern(def.pattern);
-            if (pattern == .assign) {
-                const ident_name = platform_module.env.getIdent(pattern.assign.ident);
-                if (std.mem.eql(u8, ident_name, entry.roc_ident)) {
-                    main_for_host_expr = def.expr;
-                    break;
-                }
-            }
-        }
-    }
-
-    const entrypoint_expr = main_for_host_expr orelse return error.NoModulesCompiled;
-
-    // Phase 6: Initialize interpreter and evaluate main_for_host!
-    const import_mapping_mod = @import("types").import_mapping;
-    const builtin_types = build_env.builtin_modules.asBuiltinTypes();
-    const builtin_module_env_ptr = build_env.builtin_modules.builtin_module.env;
-
-    // Empty import mapping (interpreter_shim also uses empty mapping for display names)
-    var empty_import_mapping = import_mapping_mod.ImportMapping.init(ctx.gpa);
-    defer empty_import_mapping.deinit();
-
-    // Cast all_module_envs to const slice for interpreter
-    const const_module_envs: []const *const ModuleEnv = @ptrCast(all_module_envs);
-
-    // Initialize interpreter: platform env as primary, all_module_envs as other_envs
-    // (resolveImports was called with all_module_envs, so resolved indices match)
-    var interpreter = eval.Interpreter.init(
-        ctx.gpa,
-        platform_module.env, // primary env (evaluating main_for_host!)
-        builtin_types,
-        builtin_module_env_ptr,
-        const_module_envs, // other_envs = same array used by resolveImports
-        &empty_import_mapping,
-        app_module_env, // app_env for requires clause (main!)
-        null, // constant_strings_arena (use internal)
-        @import("target.zig").RocTarget.detectNative(),
-    ) catch return error.CompilationFailed;
-    defer interpreter.deinitAndFreeOtherEnvs();
-
-    // Setup for-clause type mappings (platform → app)
-    interpreter.setupForClauseTypeMappings(platform_module.env) catch {};
-
-    // Build RocOps with echo! hosted function
+    // Phase 4: Execute via interpreter
     var hosted_fn_array = [_]HostedFn{echo_platform.host_abi.hostedFn(&echo_platform.echoHostedFn)};
     var roc_ops = echo_platform.makeDefaultRocOps(&hosted_fn_array);
-
-    // Build CLI args as RocList(RocStr)
     var cli_args_list = echo_platform.buildCliArgs(args.app_args, &roc_ops);
-
-    // Result buffer for I32 return value (4 bytes, aligned)
     var result_buf: [16]u8 align(16) = undefined;
 
-    // Evaluate main_for_host!(args) via interpreter
-    interpreter.evaluateExpression(
-        entrypoint_expr,
-        @ptrCast(&result_buf),
+    compile.runner.runViaInterpreter(
+        ctx.gpa,
+        entry.platform_env,
+        build_env.builtin_modules,
+        resolved.all_module_envs,
+        entry.app_module_env,
+        entry.entrypoint_expr,
         &roc_ops,
         @ptrCast(&cli_args_list),
+        @ptrCast(&result_buf),
+        target,
     ) catch |err| {
-        std.debug.print("Interpreter error: {}\n", .{err});
+        std.debug.print("Execution error: {}\n", .{err});
         std.process.exit(1);
     };
 
-    // Read I32 exit code from result buffer, truncated to u8 for process exit
     const exit_code = std.mem.bytesToValue(u32, result_buf[0..4]);
     const exit_u8: u8 = @truncate(exit_code);
     if (exit_u8 != 0) {
@@ -2119,7 +1915,7 @@ pub fn setupSharedMemoryWithCoordinator(ctx: *CliContext, roc_file_path: []const
         ctx.gpa, // Use regular allocator for Coordinator internals
         .single_threaded,
         1,
-        roc_target.RocTarget.detectNative(), // IPC runs on host
+        RocTarget.detectNative(), // IPC runs on host
         &builtin_modules,
         build_options.compiler_version,
         null, // no cache for IPC
@@ -3230,7 +3026,7 @@ fn extractEntrypointsFromPlatform(ctx: *CliContext, roc_file_path: []const u8, e
 /// This library contains the shim code that runs in child processes to read ModuleEnv from shared memory.
 /// For native builds and roc run, use the native shim (pass null or native target).
 /// For cross-compilation, pass the target to get the appropriate shim.
-pub fn extractReadRocFilePathShimLibrary(ctx: *CliContext, output_path: []const u8, target: ?roc_target.RocTarget) !void {
+pub fn extractReadRocFilePathShimLibrary(ctx: *CliContext, output_path: []const u8, target: ?RocTarget) !void {
     _ = ctx; // unused but kept for consistency
 
     if (builtin.is_test) {
@@ -3324,7 +3120,7 @@ fn validateBundleWithCoordinator(
     defer ctx.gpa.free(abs_entry);
 
     // Create a BuildEnv to parse headers and discover modules via the Coordinator
-    var build_env = try BuildEnv.init(ctx.gpa, .single_threaded, 1, roc_target.RocTarget.detectNative());
+    var build_env = try BuildEnv.init(ctx.gpa, .single_threaded, 1, RocTarget.detectNative());
     defer build_env.deinit();
 
     // Run the build — the Coordinator discovers all transitive module dependencies
@@ -3736,7 +3532,7 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     const thread_count: usize = if (args.max_threads) |t| t else (std.Thread.getCpuCount() catch 1);
     const mode: compile.package.Mode = if (thread_count <= 1) .single_threaded else .multi_threaded;
 
-    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative());
+    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative());
     build_env.compiler_version = build_options.compiler_version;
     defer build_env.deinit();
 
@@ -3752,16 +3548,7 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
 
     // Phase 2: Discover dependencies (parses headers once, extracts TargetsConfig)
     build_env.discoverDependencies(args.path) catch |err| {
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
@@ -3858,94 +3645,39 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     build_env.setTarget(target);
 
     build_env.compileDiscovered() catch |err| {
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
-    // Drain reports and count errors/warnings
-    const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-    defer build_env.freeDrainedReports(drained);
-
-    var total_error_count: usize = 0;
-    var total_warning_count: usize = 0;
-
-    for (drained) |mod| {
-        for (mod.reports) |*report| {
-            switch (report.severity) {
-                .info => {},
-                .runtime_error, .fatal => total_error_count += 1,
-                .warning => total_warning_count += 1,
-            }
-            const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-            const config = reporting.ReportingConfig.initColorTerminal();
-            reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-        }
-    }
-
-    if (total_error_count > 0 and !args.allow_errors) {
+    const diag = build_env.renderDiagnostics(ctx.io.stderr());
+    if (diag.errors > 0 and !args.allow_errors) {
         return error.CompilationFailed;
     }
 
-    // Get compiled modules - use getCompiledModules (not serialization order) to preserve
-    // the module ordering that matches the CIR's import resolution
-    const modules = build_env.getCompiledModules(ctx.arena) catch |err| {
+    // Get resolved module envs (Builtin at [0], imports re-resolved)
+    var resolved = build_env.getResolvedModuleEnvs(ctx.arena) catch |err| {
         std.log.err("Failed to get compiled modules: {}", .{err});
         return err;
     };
+    const modules = resolved.compiled_modules;
+    const all_module_envs = resolved.all_module_envs;
 
-    if (modules.len == 0) {
-        std.log.err("No modules were compiled", .{});
-        return error.NoModulesCompiled;
-    }
+    std.log.debug("Found {} modules", .{modules.len});
 
-    // Find platform module (primary module is platform main if present)
-    const platform_idx = BuildEnv.findPrimaryModuleIndex(modules) orelse {
-        std.log.err("No platform module found", .{});
-        return error.NoPlatformModule;
-    };
-    const platform_module = modules[platform_idx];
-
-    std.log.debug("Found {} modules, platform module at index {}", .{ modules.len, platform_idx });
-
-    // Get provides entries from the compiled platform module
-    const provides_entries = platform_module.provides_entries;
-    if (provides_entries.len == 0) {
+    // Find platform module and validate provides entries
+    const plat = resolved.getPlatformModule() catch {
         return ctx.fail(.{ .entrypoint_extraction_failed = .{
             .path = platform_source.?,
             .reason = "NoEntrypointFound",
         } });
-    }
+    };
+    const platform_module = plat.module;
+    const platform_idx = plat.platform_idx;
+    const provides_entries = plat.provides_entries;
     std.log.debug("Found {} provides entries", .{provides_entries.len});
 
-    // Build module envs array for layout store and lowering.
-    // Include the Builtin module first, matching the layout used during type-checking
-    // (where resolveImports resolved "Builtin" to index 0). Without this, resolved
-    // import indices for builtins (List, Str, Bool, etc.) point to the wrong module.
-    const builtin_env = build_env.builtin_modules.builtin_module.env;
-    var all_module_envs = try ctx.arena.alloc(*ModuleEnv, modules.len + 1);
-    all_module_envs[0] = builtin_env;
-    for (modules, 0..) |mod, i| {
-        all_module_envs[i + 1] = mod.env;
-    }
-
-    // Re-resolve imports against all_module_envs so resolved indices match this array.
-    // During type-checking, imports were resolved against a per-module imported_envs array
-    // (with Builtin at index 0). Now we re-resolve against the unified all_module_envs.
-    for (all_module_envs) |module| {
-        module.imports.resolveImports(module, all_module_envs);
-    }
-
     // Compiled modules (excluding Builtin at index 0) for pipelines that shouldn't process Builtin
-    const compiled_module_envs = all_module_envs[1..];
+    const compiled_module_envs = resolved.compiledModuleEnvs();
 
     // Run closure pipeline on modules (lambda lifting, inference, transformation)
     std.log.debug("Running closure pipeline...", .{});
@@ -3994,115 +3726,10 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
         }
     }
 
-    // Process hosted functions - assign global indices based on alphabetical order
-    // and build a map for fast lookup during lowering.
-    var hosted_functions = mono.Lower.HostedFunctionMap.init(ctx.gpa);
+    // Process hosted functions - assign global indices and build lookup map for lowering
+    var hosted_functions = BuildEnv.ResolvedModules.HostedFunctionMap.init(ctx.gpa);
     defer hosted_functions.deinit();
-
-    {
-        const HostedCompiler = can.HostedCompiler;
-        var all_hosted_fns = std.ArrayList(HostedCompiler.HostedFunctionInfo).empty;
-        defer all_hosted_fns.deinit(ctx.gpa);
-
-        // Collect from platform sibling modules
-        for (modules) |mod| {
-            if (!mod.is_platform_sibling) continue;
-
-            var module_fns = HostedCompiler.collectAndSortHostedFunctions(mod.env) catch continue;
-            defer module_fns.deinit(mod.env.gpa);
-
-            for (module_fns.items) |fn_info| {
-                const name_copy = ctx.gpa.dupe(u8, fn_info.name_text) catch continue;
-                mod.env.gpa.free(fn_info.name_text);
-                all_hosted_fns.append(ctx.gpa, .{
-                    .symbol_name = fn_info.symbol_name,
-                    .expr_idx = fn_info.expr_idx,
-                    .name_text = name_copy,
-                }) catch {
-                    ctx.gpa.free(name_copy);
-                    continue;
-                };
-            }
-        }
-
-        if (all_hosted_fns.items.len > 0) {
-            // Sort globally by qualified name
-            const SortContext = struct {
-                pub fn lessThan(_: void, a: HostedCompiler.HostedFunctionInfo, b: HostedCompiler.HostedFunctionInfo) bool {
-                    return std.mem.order(u8, a.name_text, b.name_text) == .lt;
-                }
-            };
-            std.mem.sort(HostedCompiler.HostedFunctionInfo, all_hosted_fns.items, {}, SortContext.lessThan);
-
-            // Deduplicate
-            var write_idx: usize = 0;
-            for (all_hosted_fns.items, 0..) |fn_info, read_idx| {
-                if (write_idx == 0 or !std.mem.eql(u8, all_hosted_fns.items[write_idx - 1].name_text, fn_info.name_text)) {
-                    if (write_idx != read_idx) {
-                        all_hosted_fns.items[write_idx] = fn_info;
-                    }
-                    write_idx += 1;
-                } else {
-                    ctx.gpa.free(fn_info.name_text);
-                }
-            }
-            all_hosted_fns.shrinkRetainingCapacity(write_idx);
-
-            // Assign global indices and register in the hosted function registry
-            for (modules, 0..) |mod, global_module_idx| {
-                if (!mod.is_platform_sibling) continue;
-                const platform_env = mod.env;
-
-                const mod_all_defs = platform_env.store.sliceDefs(platform_env.all_defs);
-                for (mod_all_defs) |def_idx| {
-                    const def = platform_env.store.getDef(def_idx);
-                    const expr = platform_env.store.getExpr(def.expr);
-
-                    if (expr == .e_hosted_lambda) {
-                        const hosted = expr.e_hosted_lambda;
-                        const local_name = platform_env.getIdent(hosted.symbol_name);
-                        const plat_module_name = base.module_path.getModuleName(platform_env.module_name);
-                        const qualified_name = std.fmt.allocPrint(ctx.gpa, "{s}.{s}", .{ plat_module_name, local_name }) catch continue;
-                        defer ctx.gpa.free(qualified_name);
-
-                        const stripped_name = if (std.mem.endsWith(u8, qualified_name, "!"))
-                            qualified_name[0 .. qualified_name.len - 1]
-                        else
-                            qualified_name;
-
-                        for (all_hosted_fns.items, 0..) |fn_info, idx| {
-                            if (std.mem.eql(u8, fn_info.name_text, stripped_name)) {
-                                const hosted_index: u32 = @intCast(idx);
-
-                                // Update the CIR expression with the global index
-                                const expr_node_idx = @as(@TypeOf(platform_env.store.nodes).Idx, @enumFromInt(@intFromEnum(def.expr)));
-                                var expr_node = platform_env.store.nodes.get(expr_node_idx);
-                                var payload = expr_node.getPayload().expr_hosted_lambda;
-                                payload.index = hosted_index;
-                                expr_node.setPayload(.{ .expr_hosted_lambda = payload });
-                                platform_env.store.nodes.set(expr_node_idx, expr_node);
-
-                                // Register in the hosted function map for fast lookup during lowering
-                                // Store mappings for def_idx, pattern_idx, and expr_idx so lookup
-                                // succeeds regardless of which node target_node_idx points to
-                                const mod_idx: u16 = @intCast(global_module_idx + 1);
-                                hosted_functions.put(mono.Lower.hostedFunctionKey(mod_idx, @intFromEnum(def_idx)), hosted_index) catch {};
-                                hosted_functions.put(mono.Lower.hostedFunctionKey(mod_idx, @intFromEnum(def.pattern)), hosted_index) catch {};
-                                hosted_functions.put(mono.Lower.hostedFunctionKey(mod_idx, @intFromEnum(def.expr)), hosted_index) catch {};
-
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Free name_text strings
-            for (all_hosted_fns.items) |fn_info| {
-                ctx.gpa.free(fn_info.name_text);
-            }
-        }
-    }
+    try resolved.processHostedFunctions(ctx.gpa, &hosted_functions);
 
     // Create layout store
     std.log.debug("Creating layout store...", .{});
@@ -4117,14 +3744,7 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     };
     defer layout_store.deinit();
 
-    // Find the app module index
-    var app_module_idx: ?u32 = null;
-    for (modules, 0..) |mod, i| {
-        if (mod.is_app) {
-            app_module_idx = @intCast(i + 1);
-            break;
-        }
-    }
+    const app_module_idx = plat.app_module_idx;
     std.log.debug("App module index: {?}", .{app_module_idx});
 
     // Create Mono IR store
@@ -4350,8 +3970,8 @@ fn rocBuildNative(ctx: *CliContext, args: cli_args.BuildArgs) !void {
         try stdout.print("    Cache Hit: {}%\n", .{cache_percent});
     }
 
-    if (total_warning_count > 0) {
-        try stdout.print("  {} warning(s)\n", .{total_warning_count});
+    if (diag.warnings > 0) {
+        try stdout.print("  {} warning(s)\n", .{diag.warnings});
     }
 }
 
@@ -4389,7 +4009,7 @@ fn rocBuildEmbedded(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     const thread_count: usize = if (args.max_threads) |t| t else (std.Thread.getCpuCount() catch 1);
     const mode: compile.package.Mode = if (thread_count <= 1) .single_threaded else .multi_threaded;
 
-    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative());
+    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative());
     build_env.compiler_version = build_options.compiler_version;
     defer build_env.deinit();
 
@@ -4405,17 +4025,7 @@ fn rocBuildEmbedded(ctx: *CliContext, args: cli_args.BuildArgs) !void {
 
     // Phase 2: Discover dependencies (parses headers once, extracts TargetsConfig)
     build_env.discoverDependencies(args.path) catch |err| {
-        // Drain and display error reports
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
@@ -4511,43 +4121,12 @@ fn rocBuildEmbedded(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     build_env.setTarget(target);
 
     build_env.compileDiscovered() catch |err| {
-        // Drain and display error reports
-        const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-        defer build_env.freeDrainedReports(drained);
-
-        for (drained) |mod| {
-            for (mod.reports) |*report| {
-                const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-                const config = reporting.ReportingConfig.initColorTerminal();
-                reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-            }
-        }
+        _ = build_env.renderDiagnostics(ctx.io.stderr());
         return err;
     };
 
-    // Drain reports and count errors/warnings
-    const drained = build_env.drainReports() catch &[_]BuildEnv.DrainedModuleReports{};
-    defer build_env.freeDrainedReports(drained);
-
-    var total_error_count: usize = 0;
-    var total_warning_count: usize = 0;
-
-    for (drained) |mod| {
-        for (mod.reports) |*report| {
-            switch (report.severity) {
-                .info => {},
-                .runtime_error, .fatal => total_error_count += 1,
-                .warning => total_warning_count += 1,
-            }
-            // Render all reports
-            const palette = reporting.ColorUtils.getPaletteForConfig(reporting.ReportingConfig.initColorTerminal());
-            const config = reporting.ReportingConfig.initColorTerminal();
-            reporting.renderReportToTerminal(report, ctx.io.stderr(), palette, config) catch {};
-        }
-    }
-
-    // Check if we should stop due to errors
-    if (total_error_count > 0 and !args.allow_errors) {
+    const embedded_diag = build_env.renderDiagnostics(ctx.io.stderr());
+    if (embedded_diag.errors > 0 and !args.allow_errors) {
         return error.CompilationFailed;
     }
 
@@ -4765,7 +4344,7 @@ fn rocBuildEmbedded(ctx: *CliContext, args: cli_args.BuildArgs) !void {
     }
 
     // Exit with code 2 if there were warnings (but no errors)
-    if (total_warning_count > 0) {
+    if (embedded_diag.warnings > 0) {
         ctx.io.flush();
         std.process.exit(2);
     }
@@ -5158,7 +4737,7 @@ fn rocTest(ctx: *CliContext, args: cli_args.TestArgs) !void {
     const mode: Mode = if (thread_count <= 1) .single_threaded else .multi_threaded;
 
     // Initialize BuildEnv for compilation
-    var build_env = BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative()) catch |err| {
+    var build_env = BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative()) catch |err| {
         try stderr.print("Failed to initialize build environment: {}\n", .{err});
         return err;
     };
@@ -5286,7 +4865,7 @@ fn rocTest(ctx: *CliContext, args: cli_args.TestArgs) !void {
         builtin_types,
         builtin_module_env,
         &import_mapping,
-        roc_target.RocTarget.detectNative(),
+        RocTarget.detectNative(),
     ) catch |err| {
         try stderr.print("Failed to create compile-time evaluator: {}\n", .{err});
         return err;
@@ -5706,7 +5285,7 @@ fn rocGlueInner(ctx: *CliContext, args: cli_args.GlueArgs) GlueError!void {
     const thread_count: usize = 1;
     const mode: Mode = .single_threaded;
 
-    var build_env = BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative()) catch {
+    var build_env = BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative()) catch {
         return error.BuildEnvInit;
     };
     defer build_env.deinit();
@@ -6659,7 +6238,7 @@ fn checkFileWithBuildEnvPreserved(
     const thread_count: usize = if (max_threads) |t| t else (std.Thread.getCpuCount() catch 1);
     const mode: compile.package.Mode = if (thread_count <= 1) .single_threaded else .multi_threaded;
 
-    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative());
+    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative());
     build_env.compiler_version = build_options.compiler_version;
     // Note: We do NOT defer build_env.deinit() here because we're returning it
 
@@ -6766,7 +6345,7 @@ fn checkFileWithBuildEnv(
     const thread_count: usize = if (max_threads) |t| t else (std.Thread.getCpuCount() catch 1);
     const mode: compile.package.Mode = if (thread_count <= 1) .single_threaded else .multi_threaded;
 
-    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, roc_target.RocTarget.detectNative());
+    var build_env = try BuildEnv.init(ctx.gpa, mode, thread_count, RocTarget.detectNative());
     build_env.compiler_version = build_options.compiler_version;
     defer build_env.deinit();
 
