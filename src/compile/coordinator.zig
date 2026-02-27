@@ -2169,6 +2169,7 @@ pub const Coordinator = struct {
             task.package_name,
             null, // Coordinator handles import resolution separately
             known_modules.items,
+            self.file_provider,
         ) catch {};
 
         const canon_end = if (threads_available) std.time.nanoTimestamp() else 0;
