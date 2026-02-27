@@ -1429,10 +1429,10 @@ fn rocRunDefaultApp(ctx: *CliContext, args: cli_args.RunArgs, original_source: [
         std.process.exit(1);
     };
 
-    const exit_code = std.mem.bytesToValue(u32, result_buf[0..4]);
-    const exit_u8: u8 = @truncate(exit_code);
-    if (exit_u8 != 0) {
-        std.process.exit(exit_u8);
+    // Platform returns I8; bit-identical to u8 for std.process.exit
+    const exit_code = result_buf[0];
+    if (exit_code != 0) {
+        std.process.exit(exit_code);
     }
 }
 
