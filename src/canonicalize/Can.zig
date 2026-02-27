@@ -13354,8 +13354,9 @@ fn getExternalTypeBase(self: *Self, type_ident: Ident.Idx) std.mem.Allocator.Err
             }
         }
     }
-    // Final fallback: pending lookup (shouldn't happen for Str/Try)
-    unreachable;
+    // This should not happen for builtin types like Str/Try — if it does,
+    // it indicates a missing type binding in the scope or module_envs.
+    @panic("getExternalTypeBase: type not found in scope or auto-imports");
 }
 
 const MainFunctionStatus = enum { valid, invalid, not_found };
