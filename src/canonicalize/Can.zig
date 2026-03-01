@@ -1964,6 +1964,19 @@ pub fn canonicalizeFile(
         try self.injectEchoPlatform();
     }
 
+    // Phase 0: Register module aliases and import indices early so they are available
+    // during type declaration and associated block canonicalization (Phases 1a-1.7).
+    // Without this, qualified type references like `PartDef.Idx` inside associated blocks
+    // would fail because the module alias isn't in scope yet.
+    // NOTE: We only register aliases/indices here, NOT exposed items or conflict detection.
+    // Full import processing happens in the second pass to preserve correct conflict detection.
+    for (self.parse_ir.store.statementSlice(file.statements)) |stmt_id| {
+        const stmt = self.parse_ir.store.getStatement(stmt_id);
+        if (stmt == .import) {
+            try self.registerImportModuleAlias(stmt.import);
+        }
+    }
+
     // First pass (1a): Process type declarations WITH associated blocks to introduce them into scope
     // Defer associated blocks themselves until after we've created placeholders for top-level items
     for (self.parse_ir.store.statementSlice(file.statements)) |stmt_id| {
@@ -3535,6 +3548,62 @@ fn canonicalizeImportStatement(
         try self.importUnaliased(module_name, cir_exposes, import_region, is_package_qualified)
     else
         try self.importAliased(module_name, import_stmt.alias_tok, cir_exposes, import_region, is_package_qualified);
+}
+
+/// Early registration of import module aliases and import indices.
+/// This is called in Phase 0 before type declarations are processed, so that
+/// qualified type references like `PartDef.Idx` inside associated blocks can
+/// resolve the module alias. Full import processing (exposed items, conflict
+/// detection, CIR statements) happens later in the second pass.
+fn registerImportModuleAlias(
+    self: *Self,
+    import_stmt: @TypeOf(@as(AST.Statement, undefined).import),
+) std.mem.Allocator.Error!void {
+    // Skip nested imports (auto-expose) - they don't introduce module aliases
+    if (import_stmt.nested_import) return;
+
+    // 1. Resolve the module name
+    const module_name = blk: {
+        const module_name_ident = self.parse_ir.tokens.resolveIdentifier(import_stmt.module_name_tok) orelse return;
+
+        if (import_stmt.qualifier_tok) |qualifier_tok| {
+            if (self.parse_ir.tokens.resolveIdentifier(qualifier_tok) == null) return;
+
+            const qualifier_region = self.parse_ir.tokens.resolve(qualifier_tok);
+            const module_region = self.parse_ir.tokens.resolve(import_stmt.module_name_tok);
+            const full_name = self.parse_ir.env.source[qualifier_region.start.offset..module_region.end.offset];
+
+            if (base.Ident.from_bytes(full_name)) |valid_ident| {
+                break :blk try self.env.insertIdent(valid_ident);
+            } else |_| {
+                return; // Malformed - will be handled in full import processing
+            }
+        } else {
+            break :blk module_name_ident;
+        }
+    };
+
+    const module_name_text = self.env.getIdent(module_name);
+
+    // 2. Get or create Import.Idx for this module
+    const module_import_idx = try self.env.imports.getOrPutWithIdent(
+        self.env.gpa,
+        self.env.common.getStringStore(),
+        module_name_text,
+        module_name,
+    );
+
+    // 3. Resolve the alias
+    const alias = try self.resolveModuleAlias(import_stmt.alias_tok, module_name) orelse return;
+
+    // 4. Introduce the module alias into the current scope (without exposed items or diagnostics)
+    const current_scope = &self.scopes.items[self.scopes.items.len - 1];
+    const is_package_qualified = import_stmt.qualifier_tok != null;
+    _ = try current_scope.introduceModuleAlias(self.env.gpa, alias, module_name, is_package_qualified, null);
+
+    // 5. Store the import index mapping and add to scope for qualified lookups
+    try self.import_indices.put(self.env.gpa, module_name_text, module_import_idx);
+    _ = try current_scope.introduceImportedModule(self.env.gpa, module_name_text, module_import_idx);
 }
 
 /// Resolve the module alias name from either explicit alias or module name
@@ -12207,15 +12276,21 @@ fn scopeIntroduceModuleAlias(self: *Self, alias_name: Ident.Idx, module_name: Id
                 },
             });
         },
-        .already_in_scope => {
-            // Module alias already exists in current scope
-            try self.env.pushDiagnostic(Diagnostic{
-                .shadowing_warning = .{
-                    .ident = alias_name,
-                    .region = import_region,
-                    .original_region = Region.zero(),
-                },
-            });
+        .already_in_scope => |existing_info| {
+            // Module alias already exists in current scope.
+            // If it refers to the same module (e.g., re-registered from early Phase 0),
+            // this is not a conflict - skip the warning.
+            if (existing_info.module_name.idx == module_name.idx) {
+                // Same module, just re-registered - not an error
+            } else {
+                try self.env.pushDiagnostic(Diagnostic{
+                    .shadowing_warning = .{
+                        .ident = alias_name,
+                        .region = import_region,
+                        .original_region = Region.zero(),
+                    },
+                });
+            }
         },
     }
 }
