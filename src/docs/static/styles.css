@@ -1,5 +1,5 @@
 :root {
-  /* WCAG AAA Compliant colors - important that luminence (the l in hsl) is 18% for font colors against the bg's luminence of 96-97% when the font-size is at least 14pt */
+  /* WCAG AAA Compliant colors - important that luminance (the l in hsl) is 18% for font colors against the bg's luminance of 96-97% when the font-size is at least 14pt */
   --code-bg: hsl(262 33% 96% / 1);
   --code-color: #000;
   --gray: hsl(0 0% 18% / 1);
@@ -282,7 +282,7 @@ main {
   /* necessary for text-overflow: ellipsis to work in descendants */
   min-width: 0;
   overflow-x: auto;
-  /* fixes issues with horizonatal scroll in cases where word is too long,
+  /* fixes issues with horizontal scroll in cases where word is too long,
   like in one of the examples at https://www.roc-lang.org/builtins/Num#Dec */
   overflow-y: auto;
   display: grid;
