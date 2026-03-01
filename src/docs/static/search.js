@@ -146,7 +146,7 @@ const setupSearch = () => {
         searchTypeAhead.classList.add("hidden");
       } else {
         let totalResults = 0;
-        // Firsttype-ahead-signature", show/hide all the sub-entries within each module (top-level functions etc.)
+        // Show/hide all the sub-entries within each module (top-level functions etc.)
         searchTypeAhead.querySelectorAll("li").forEach((entry) => {
           const entryModule = entry
             .querySelector(".type-ahead-module-name")

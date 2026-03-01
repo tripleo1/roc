@@ -313,18 +313,7 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 method_entry.name = short_name; // Use short name
 
                 // Add to parent's children
-                var new_children = std.ArrayList(DocModel.DocEntry).empty;
-
-                // Copy existing children
-                for (parent.children) |child| {
-                    try new_children.append(gpa, child);
-                }
-                // Add the new method entry
-                try new_children.append(gpa, method_entry);
-
-                // Free old children array and assign new one
-                gpa.free(parent.children);
-                parent.children = try new_children.toOwnedSlice(gpa);
+                try appendChildEntry(gpa, parent, method_entry);
 
                 // Remove from top-level list (preserving source order)
                 gpa.free(entry.children); // Free empty children array
@@ -481,13 +470,7 @@ fn reparentBuiltinChildren(gpa: Allocator, entries_list: *std.ArrayList(DocModel
                     try reparentDottedChildInto(gpa, &children_list, method_entry);
                     parent_ptr.children = try children_list.toOwnedSlice(gpa);
                 } else {
-                    var new_children = std.ArrayList(DocModel.DocEntry).empty;
-                    for (parent_ptr.children) |c| {
-                        try new_children.append(gpa, c);
-                    }
-                    try new_children.append(gpa, method_entry);
-                    gpa.free(parent_ptr.children);
-                    parent_ptr.children = try new_children.toOwnedSlice(gpa);
+                    try appendChildEntry(gpa, parent_ptr, method_entry);
                 }
 
                 // Remove from top-level list (preserving source order)
@@ -584,13 +567,7 @@ fn reparentDottedChild(
         p.children = try children_list.toOwnedSlice(gpa);
     } else {
         // Simple case — just append to parent's children
-        var new_children = std.ArrayList(DocModel.DocEntry).empty;
-        for (p.children) |c| {
-            try new_children.append(gpa, c);
-        }
-        try new_children.append(gpa, new_child);
-        gpa.free(p.children);
-        p.children = try new_children.toOwnedSlice(gpa);
+        try appendChildEntry(gpa, p, new_child);
     }
 }
 
@@ -653,13 +630,7 @@ fn reparentDottedChildInto(
         p.children = try sub_children.toOwnedSlice(gpa);
     } else {
         // Leaf — append to parent's children
-        var new_children = std.ArrayList(DocModel.DocEntry).empty;
-        for (p.children) |c| {
-            try new_children.append(gpa, c);
-        }
-        try new_children.append(gpa, new_child);
-        gpa.free(p.children);
-        p.children = try new_children.toOwnedSlice(gpa);
+        try appendChildEntry(gpa, p, new_child);
     }
 }
 
@@ -1794,6 +1765,18 @@ fn joinLines(gpa: Allocator, lines: []const []const u8) ![]u8 {
         pos += line.len;
     }
     return result;
+}
+
+/// Append a child entry to a parent's children slice, reallocating in place.
+/// This replaces the repeated pattern of: create ArrayList, copy all old children,
+/// append new child, free old slice, toOwnedSlice.
+fn appendChildEntry(gpa: Allocator, parent: *DocModel.DocEntry, child: DocModel.DocEntry) !void {
+    const old = parent.children;
+    const new_children = try gpa.alloc(DocModel.DocEntry, old.len + 1);
+    @memcpy(new_children[0..old.len], old);
+    new_children[old.len] = child;
+    gpa.free(old);
+    parent.children = new_children;
 }
 
 fn trimLeft(s: []const u8) []const u8 {

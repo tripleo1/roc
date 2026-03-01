@@ -15,7 +15,7 @@ const embedded_js = @embedFile("static/search.js");
 
 const Writer = *std.Io.Writer;
 
-/// Tree node for sidebar hierarchy
+/// Tree node for sidebar/content hierarchy
 const SidebarNode = struct {
     name: []const u8, // The name component at this level
     full_path: []const u8, // Full qualified name (allocated)
@@ -23,7 +23,6 @@ const SidebarNode = struct {
     is_leaf: bool, // Is this a leaf entry?
     entry: ?*const DocModel.DocEntry, // Reference to the actual entry (if leaf)
     children: std.ArrayList(*SidebarNode),
-    allocator: Allocator,
     owns_full_path: bool, // Whether we own the full_path allocation
 
     fn init(gpa: Allocator, name: []const u8, full_path: []const u8, owns_full_path: bool) !*SidebarNode {
@@ -36,21 +35,20 @@ const SidebarNode = struct {
             .is_leaf = false,
             .entry = null,
             .children = children,
-            .allocator = gpa,
             .owns_full_path = owns_full_path,
         };
         return node;
     }
 
-    fn deinit(self: *SidebarNode) void {
+    fn deinit(self: *SidebarNode, gpa: Allocator) void {
         for (self.children.items) |child| {
-            child.deinit();
+            child.deinit(gpa);
         }
-        self.children.deinit(self.allocator);
+        self.children.deinit(gpa);
         if (self.owns_full_path) {
-            self.allocator.free(self.full_path);
+            gpa.free(self.full_path);
         }
-        self.allocator.destroy(self);
+        gpa.destroy(self);
     }
 };
 
@@ -134,7 +132,7 @@ fn writePackageIndex(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir)
     try renderSidebar(w, ctx, gpa, "");
 
     // Main content
-    try w.writeAll("    <main>\n");
+    try writeMainOpen(w);
     try w.writeAll("        <h1 class=\"module-name\">");
     try writeHtmlEscaped(w, ctx.package_docs.name);
     try w.writeAll("</h1>\n");
@@ -177,7 +175,7 @@ fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, m
     try renderSidebar(w, ctx, gpa, "../");
 
     // Main content
-    try w.writeAll("    <main>\n");
+    try writeMainOpen(w);
     try w.writeAll("        <h1 class=\"module-name\">");
     try writeHtmlEscaped(w, mod.name);
     if (mod.kind == .type_module) {
@@ -193,8 +191,8 @@ fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, m
     }
 
     // Entries - render as hierarchical tree
-    const tree = try buildContentTree(gpa, mod.entries);
-    defer tree.deinit();
+    const tree = try buildEntryTree(gpa, mod.entries);
+    defer tree.deinit(gpa);
     try renderEntryTree(w, ctx, tree, 0);
 
     try writeFooter(w);
@@ -227,74 +225,21 @@ fn writeBodyClose(w: Writer) !void {
     try w.writeAll("</body>\n</html>\n");
 }
 
-fn writeFooter(w: Writer) !void {
-    try w.writeAll("        <footer><p>Made by people who like to make nice things.</p></footer>\n");
+const menu_toggle_svg =
+    \\<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    \\    <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+    \\</svg>
+;
+
+fn writeMainOpen(w: Writer) !void {
+    try w.writeAll("    <main>\n");
+    try w.writeAll("        <button class=\"menu-toggle\" aria-label=\"Toggle sidebar\">");
+    try w.writeAll(menu_toggle_svg);
+    try w.writeAll("</button>\n");
 }
 
-fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
-    const root = try SidebarNode.init(gpa, "", "", false);
-
-    for (entries) |*entry| {
-        var current = root;
-
-        // Split entry name by dots
-        var parts = try std.ArrayList([]const u8).initCapacity(gpa, 8);
-        defer parts.deinit(gpa);
-
-        var start: usize = 0;
-        for (entry.name, 0..) |char, i| {
-            if (char == '.') {
-                try parts.append(gpa, entry.name[start..i]);
-                start = i + 1;
-            }
-        }
-        try parts.append(gpa, entry.name[start..]);
-
-        // Build path through tree
-        var path_so_far = try std.ArrayList(u8).initCapacity(gpa, 256);
-        defer path_so_far.deinit(gpa);
-
-        for (parts.items, 0..) |part, idx| {
-            if (idx > 0) try path_so_far.append(gpa, '.');
-            try path_so_far.appendSlice(gpa, part);
-
-            const is_last = (idx == parts.items.len - 1);
-
-            // Find or create child node
-            var found: ?*SidebarNode = null;
-            for (current.children.items) |child| {
-                if (std.mem.eql(u8, child.name, part)) {
-                    found = child;
-                    break;
-                }
-            }
-
-            if (found == null) {
-                const full_path = try gpa.dupe(u8, path_so_far.items);
-                const new_node = try SidebarNode.init(gpa, part, full_path, true);
-                try current.children.append(gpa, new_node);
-                found = new_node;
-            }
-
-            var node = found.?;
-
-            if (is_last) {
-                node.is_leaf = true;
-                node.is_type = (entry.kind != .value);
-                node.entry = entry;
-
-                // Also add entry's children as nested nodes,
-                // splitting dotted names into sub-trees
-                for (entry.children) |*child_entry| {
-                    try addChildToContentTree(gpa, node, entry.name, child_entry);
-                }
-            }
-
-            current = node;
-        }
-    }
-
-    return root;
+fn writeFooter(w: Writer) !void {
+    try w.writeAll("        <footer><p>Made by people who like to make nice things.</p></footer>\n");
 }
 
 fn sortSidebarNodeChildren(node: *SidebarNode) void {
@@ -313,7 +258,7 @@ fn lessThanSidebarNode(_: void, a: *SidebarNode, b: *SidebarNode) bool {
     return std.mem.order(u8, a.name, b.name) == .lt;
 }
 
-fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
+fn buildEntryTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
     const root = try SidebarNode.init(gpa, "", "", false);
 
     for (entries) |*entry| {
@@ -368,7 +313,7 @@ fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
                 // Also add entry's children as nested nodes,
                 // splitting dotted names into sub-trees
                 for (entry.children) |*child_entry| {
-                    try addChildToContentTree(gpa, node, entry.name, child_entry);
+                    try addChildToEntryTree(gpa, node, entry.name, child_entry);
                 }
             }
 
@@ -381,7 +326,7 @@ fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
 
 /// Add a child entry to the content tree, splitting its name on dots
 /// to create intermediate group nodes.
-fn addChildToContentTree(
+fn addChildToEntryTree(
     gpa: Allocator,
     parent_node: *SidebarNode,
     parent_entry_name: []const u8,
@@ -438,7 +383,7 @@ fn addChildToContentTree(
 
             // Recursively add this entry's own children
             for (child_entry.children) |*grandchild| {
-                try addChildToContentTree(gpa, child_node, child_path.items, grandchild);
+                try addChildToEntryTree(gpa, child_node, child_path.items, grandchild);
             }
         }
 
@@ -617,8 +562,8 @@ fn renderSidebarEntries(
     _ = _depth; // No longer needed
 
     // Build tree structure
-    const tree = try buildSidebarTree(gpa, entries);
-    defer tree.deinit();
+    const tree = try buildEntryTree(gpa, entries);
+    defer tree.deinit(gpa);
 
     // Render tree
     try renderSidebarTree(w, module_name, tree, 0);
@@ -810,7 +755,7 @@ fn renderDocComment(w: Writer, doc: []const u8) !void {
 fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocType, needs_parens: bool) !void {
     switch (doc_type.*) {
         .type_ref => |ref| {
-            if (resolveTypeLink(ctx, ref.module_path)) |_| {
+            if (resolveTypeLink(ctx, ref.module_path)) {
                 try w.writeAll("<a href=\"");
                 try writeTypeLink(w, ctx, ref.module_path, ref.type_name);
                 try w.writeAll("\">");
@@ -965,13 +910,13 @@ fn resolveTypeNameToFullPath(
 fn resolveTypeLink(
     ctx: *const RenderContext,
     module_path: []const u8,
-) ?bool {
+) bool {
     if (module_path.len == 0) return true; // anchor in current page
     if (ctx.current_module) |cur| {
         if (std.mem.eql(u8, module_path, cur)) return true;
     }
     if (ctx.known_modules.contains(module_path)) return true;
-    return null;
+    return false;
 }
 
 /// Write the href value for a type link.
