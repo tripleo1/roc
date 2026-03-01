@@ -644,9 +644,12 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try w.writeAll("</a></h1>\n");
     try w.writeAll("        </div>\n");
 
-    try w.writeAll("        <div class=\"search-container\">\n");
-    try w.writeAll("            <input type=\"search\" id=\"search-input\" placeholder=\"Search documentation...\" />\n");
-    try w.writeAll("        </div>\n");
+    try w.writeAll("        <form id=\"module-search-form\">\n");
+    try w.writeAll("            <input type=\"search\" id=\"module-search\" placeholder=\"Search...\" autocomplete=\"off\" />\n");
+    try w.writeAll("            <ul id=\"search-type-ahead\" class=\"hidden\">\n");
+    try renderSearchEntries(w, ctx, base);
+    try w.writeAll("            </ul>\n");
+    try w.writeAll("        </form>\n");
 
     try w.writeAll("        <div class=\"module-links-container\">\n");
     try w.writeAll("            <div class=\"module-links\">\n");
@@ -681,6 +684,62 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try w.writeAll("            </div>\n");
     try w.writeAll("        </div>\n");
     try w.writeAll("    </nav>\n");
+}
+
+fn renderSearchEntries(w: Writer, ctx: *const RenderContext, base: []const u8) !void {
+    for (ctx.package_docs.modules) |mod| {
+        for (mod.entries) |*entry| {
+            try renderSearchEntry(w, ctx, mod.name, entry, base);
+        }
+    }
+}
+
+fn renderSearchEntry(
+    w: Writer,
+    ctx: *const RenderContext,
+    module_name: []const u8,
+    entry: *const DocModel.DocEntry,
+    base: []const u8,
+) !void {
+    // Render this entry as a type-ahead list item
+    try w.writeAll("            <li class=\"hidden\"><a class=\"type-ahead-link\" href=\"");
+    try w.writeAll(base);
+    try writeHtmlEscaped(w, module_name);
+    try w.writeAll("/#");
+    try writeHtmlEscaped(w, entry.name);
+    try w.writeAll("\">");
+    try w.writeAll("<span class=\"type-ahead-module-name\">");
+    try writeHtmlEscaped(w, module_name);
+    try w.writeAll("</span>");
+    try w.writeAll(".<span class=\"type-ahead-def-name\">");
+    // Display only the last component of the entry name
+    const display_name = if (std.mem.lastIndexOfScalar(u8, entry.name, '.')) |idx|
+        entry.name[idx + 1 ..]
+    else
+        entry.name;
+    try writeHtmlEscaped(w, display_name);
+    try w.writeAll("</span>");
+    if (entry.type_signature) |sig| {
+        try w.writeAll(" <span class=\"type-ahead-signature\">");
+        switch (entry.kind) {
+            .value, .alias => {
+                try w.writeAll(": ");
+                try renderDocTypeHtml(w, ctx, sig, false);
+            },
+            .nominal => {
+                try w.writeAll(":= ");
+                try renderDocTypeHtml(w, ctx, sig, false);
+            },
+            .@"opaque" => {},
+        }
+        try w.writeAll("</span>");
+    }
+    try w.writeAll("</a></li>\n");
+
+    // Recurse into children
+    for (entry.children) |*child| {
+        try renderSearchEntry(w, ctx, module_name, child, base);
+    }
 }
 
 fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry) !void {
