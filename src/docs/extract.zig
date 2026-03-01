@@ -378,8 +378,8 @@ fn filterTypeModuleEntries(
         // yet moved, we still keep it).
         if (std.mem.eql(u8, entry.name, module_name) or
             (std.mem.startsWith(u8, entry.name, module_name) and
-            entry.name.len > module_name.len and
-            entry.name[module_name.len] == '.'))
+                entry.name.len > module_name.len and
+                entry.name[module_name.len] == '.'))
         {
             idx += 1;
         } else {
