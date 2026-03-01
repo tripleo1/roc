@@ -149,6 +149,37 @@ table tr td {
   transition: visibility 2s;
 }
 
+/* Group headers for intermediate type groupings (e.g. Dec under Num) */
+.entry-group {
+    margin-top: 24px;
+    margin-bottom: 24px;
+}
+
+.entry-group-header {
+    font-family: var(--font-mono);
+    font-weight: var(--weight-semibold);
+    font-size: var(--font-lg);
+    color: var(--violet);
+    padding: 8px 0;
+    margin-bottom: 12px;
+    border-bottom: 2px solid rgb(from var(--violet) r g b / .25);
+}
+
+/* Type module badge */
+.module-kind-badge {
+    display: inline-block;
+    font-size: var(--font-xs);
+    font-weight: var(--weight-medium);
+    font-family: var(--font-sans);
+    background-color: var(--violet-bg);
+    color: var(--violet);
+    border: 1px solid rgb(from var(--violet) r g b / .40);
+    border-radius: 4px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    margin-left: 8px;
+}
+
 /* Hierarchical entry layout */
 .entry {
     position: relative;
@@ -480,6 +511,28 @@ footer p {
 .sidebar-sub-entries a:hover {
     border-left-color: rgb(from var(--violet) r g b / .60);
     color: var(--violet);
+    text-decoration: none;
+}
+
+/* Top-level type entries in sidebar that have no children (e.g. Dict) */
+.sidebar-group-link {
+    font-weight: var(--weight-medium);
+    font-size: var(--font-sm);
+    display: inline-block;
+    padding: 8px 16px;
+    width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    box-sizing: border-box;
+    color: var(--text-color) !important;
+    border-left: none !important;
+    margin-left: 0 !important;
+    padding-left: 16px !important;
+}
+
+.sidebar-group-link:hover {
+    color: var(--violet) !important;
     text-decoration: none;
 }
 

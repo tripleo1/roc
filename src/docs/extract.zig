@@ -146,6 +146,17 @@ pub fn extractDocComment(gpa: Allocator, source: []const u8, def_start_offset: u
 }
 
 /// Extract documentation for all exported definitions in a module.
+///
+/// For type modules, only the main type entry (the one matching the module name)
+/// and its nested children are included. All other top-level definitions are
+/// considered private to the module and are excluded from documentation.
+/// For example, in a `Color.roc` type module, only `Color := ...` and its
+/// methods are documented; any helper functions defined outside the `Color`
+/// type declaration are not visible.
+///
+/// The Builtin module receives additional special handling: the `Builtin` opaque
+/// entry itself is removed, and its children are re-distributed under the
+/// proper parent types (Str, List, Bool, Num, etc.).
 pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_name: []const u8) !DocModel.ModuleDocs {
     const source = module_env.getSourceAll();
 
@@ -315,14 +326,35 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 gpa.free(parent.children);
                 parent.children = try new_children.toOwnedSlice(gpa);
 
-                // Remove from top-level list (swap with last and shrink)
+                // Remove from top-level list (preserving source order)
                 gpa.free(entry.children); // Free empty children array
-                _ = entries_list.swapRemove(i);
+                _ = entries_list.orderedRemove(i);
                 continue; // Don't increment i, check same position again
             }
         }
 
         i += 1;
+    }
+
+    // Type module visibility: only the main type entry and its children are public.
+    // Any other top-level definitions are private helpers and should be excluded.
+    // For example, in Color.roc only `Color := ...` and its methods are visible;
+    // helper functions or types defined outside `Color` are not documented.
+    //
+    // The Builtin module is a special case — it contains many top-level types
+    // (Str, List, Bool, etc.) that need complex re-parenting rather than simple
+    // filtering, so it is handled separately below.
+    const is_builtin = std.mem.eql(u8, module_env.module_name, "Builtin");
+    if (module_env.module_kind == .type_module and !is_builtin) {
+        try filterTypeModuleEntries(gpa, &entries_list, module_env.module_name);
+    }
+
+    // Re-parent Builtin opaque type's children to their proper parent types.
+    // The Builtin module has a single opaque "Builtin" entry with hundreds of
+    // children like "Bool.not", "List.append", "Num.Dec.abs". We split those
+    // dotted names and move each child under the matching top-level type.
+    if (is_builtin) {
+        try reparentBuiltinChildren(gpa, &entries_list);
     }
 
     const entries = try entries_list.toOwnedSlice(gpa);
@@ -334,6 +366,301 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
         .module_doc = module_doc,
         .entries = entries,
     };
+}
+
+/// Filter entries in a type module to only include the main type and its children.
+///
+/// In a type module (e.g. `Color.roc`), only the entry whose name matches the
+/// module name is public. All other top-level entries — helper functions, internal
+/// types, etc. — are private to the module and excluded from documentation.
+/// The main type entry's children (methods defined inside `Color := [...].{...}`)
+/// are preserved as nested entries.
+fn filterTypeModuleEntries(
+    gpa: Allocator,
+    entries_list: *std.ArrayList(DocModel.DocEntry),
+    module_name: []const u8,
+) !void {
+    var idx: usize = 0;
+    while (idx < entries_list.items.len) {
+        const entry = &entries_list.items[idx];
+        // Keep the main type entry (name matches the module name) and any entries
+        // that are prefixed with the module name (e.g. "Color.helper" which would
+        // have been a method moved under Color by the hierarchical pass, but if not
+        // yet moved, we still keep it).
+        if (std.mem.eql(u8, entry.name, module_name) or
+            (std.mem.startsWith(u8, entry.name, module_name) and
+            entry.name.len > module_name.len and
+            entry.name[module_name.len] == '.'))
+        {
+            idx += 1;
+        } else {
+            var removed = entries_list.orderedRemove(idx);
+            removed.deinit(gpa);
+        }
+    }
+}
+
+/// Find the `Builtin` opaque entry, re-parent its dotted children under the
+/// matching top-level types, and remove the `Builtin` entry itself.
+/// Also strip "Builtin." prefix from top-level entries and re-parent them.
+fn reparentBuiltinChildren(gpa: Allocator, entries_list: *std.ArrayList(DocModel.DocEntry)) !void {
+    // Find the Builtin opaque entry
+    var builtin_idx: ?usize = null;
+    for (entries_list.items, 0..) |*entry, idx| {
+        if (entry.kind == .@"opaque" and std.mem.eql(u8, entry.name, "Builtin")) {
+            builtin_idx = idx;
+            break;
+        }
+    }
+    const bi = builtin_idx orelse return;
+    const builtin_children = entries_list.items[bi].children;
+
+    // Process each child — move it under its proper parent
+    for (builtin_children) |child| {
+        try reparentDottedChild(gpa, entries_list, child);
+    }
+
+    // Free the Builtin entry's children array (entries were moved out)
+    gpa.free(builtin_children);
+    entries_list.items[bi].children = try gpa.alloc(DocModel.DocEntry, 0);
+
+    // Remove the Builtin entry itself (preserving source order)
+    var builtin_entry = entries_list.orderedRemove(bi);
+    builtin_entry.deinit(gpa);
+
+    // Also strip "Builtin." prefix from top-level entries and re-parent them.
+    // Entries like "Builtin.Bool.decode" survived the earlier hierarchical pass
+    // because lastIndexOf('.') gave parent "Builtin.Bool" which didn't exist.
+    // First pass: strip "Builtin." prefix from all matching entries
+    const prefix = "Builtin.";
+    for (entries_list.items) |*entry| {
+        if (std.mem.startsWith(u8, entry.name, prefix)) {
+            const old_name = entry.name;
+            const stripped = old_name[prefix.len..];
+            const new_name = try gpa.dupe(u8, stripped);
+            gpa.free(old_name);
+            entry.name = new_name;
+        }
+    }
+
+    // Second pass: re-parent dotted entries under their parent types
+    // (same logic as the original hierarchical pass)
+    var j: usize = 0;
+    while (j < entries_list.items.len) {
+        const entry = &entries_list.items[j];
+        if (std.mem.indexOfScalar(u8, entry.name, '.')) |dot_idx| {
+            const parent_name = entry.name[0..dot_idx];
+            const method_short_name = entry.name[dot_idx + 1 ..];
+
+            // Find parent in entries_list
+            var parent_idx_opt: ?usize = null;
+            for (entries_list.items, 0..) |*potential_parent, idx| {
+                if (idx != j and std.mem.eql(u8, potential_parent.name, parent_name)) {
+                    parent_idx_opt = idx;
+                    break;
+                }
+            }
+
+            if (parent_idx_opt) |parent_idx| {
+                const parent_ptr = &entries_list.items[parent_idx];
+
+                // Duplicate the method entry with short name
+                const short_name = try gpa.dupe(u8, method_short_name);
+
+                var method_entry = entry.*;
+                gpa.free(method_entry.name);
+                method_entry.name = short_name;
+
+                // Check if remainder has more dots — if so, use reparentDottedChildInto
+                if (std.mem.indexOfScalar(u8, method_short_name, '.')) |_| {
+                    var children_list = std.ArrayList(DocModel.DocEntry).empty;
+                    for (parent_ptr.children) |c| {
+                        try children_list.append(gpa, c);
+                    }
+                    gpa.free(parent_ptr.children);
+                    try reparentDottedChildInto(gpa, &children_list, method_entry);
+                    parent_ptr.children = try children_list.toOwnedSlice(gpa);
+                } else {
+                    var new_children = std.ArrayList(DocModel.DocEntry).empty;
+                    for (parent_ptr.children) |c| {
+                        try new_children.append(gpa, c);
+                    }
+                    try new_children.append(gpa, method_entry);
+                    gpa.free(parent_ptr.children);
+                    parent_ptr.children = try new_children.toOwnedSlice(gpa);
+                }
+
+                // Remove from top-level list (preserving source order)
+                gpa.free(entry.children);
+                _ = entries_list.orderedRemove(j);
+                continue;
+            }
+        }
+        j += 1;
+    }
+
+    // Remove top-level value entries that are NOT part of the Builtin opaque's
+    // public API. In Builtin.roc, all public items are type declarations inside
+    // `Builtin :: [].{...}`. Standalone value entries like range_to, range_until
+    // are module-private helpers and should not appear in documentation.
+    var k: usize = 0;
+    while (k < entries_list.items.len) {
+        const entry = &entries_list.items[k];
+        if (entry.kind == .value and entry.children.len == 0) {
+            var removed = entries_list.orderedRemove(k);
+            removed.deinit(gpa);
+            continue;
+        }
+        k += 1;
+    }
+}
+
+/// Recursively re-parent a child with a dotted name (e.g. "Bool.not" or "Dec.abs")
+/// into the correct position in entries_list. If the target parent doesn't exist
+/// as a top-level entry, create a group entry for it.
+fn reparentDottedChild(
+    gpa: Allocator,
+    entries_list: *std.ArrayList(DocModel.DocEntry),
+    child: DocModel.DocEntry,
+) !void {
+    // Split on first dot
+    const dot_idx = std.mem.indexOfScalar(u8, child.name, '.') orelse {
+        // No dot — this is a direct child. Nothing to re-parent into a subgroup;
+        // it stays at top level as-is (shouldn't normally happen for Builtin children).
+        try entries_list.append(gpa, child);
+        return;
+    };
+
+    const parent_name = child.name[0..dot_idx];
+    const remainder = child.name[dot_idx + 1 ..];
+
+    // Find the matching top-level entry
+    var parent: ?*DocModel.DocEntry = null;
+    for (entries_list.items) |*entry| {
+        if (std.mem.eql(u8, entry.name, parent_name)) {
+            parent = entry;
+            break;
+        }
+    }
+
+    // If no parent exists, create a group entry
+    if (parent == null) {
+        const group_name = try gpa.dupe(u8, parent_name);
+        errdefer gpa.free(group_name);
+        const empty = try gpa.alloc(DocModel.DocEntry, 0);
+        errdefer gpa.free(empty);
+
+        try entries_list.append(gpa, DocModel.DocEntry{
+            .name = group_name,
+            .kind = .nominal,
+            .type_signature = null,
+            .doc_comment = null,
+            .children = empty,
+        });
+        parent = &entries_list.items[entries_list.items.len - 1];
+    }
+
+    const p = parent.?;
+
+    // Create the child entry with shortened name (remainder)
+    var new_child = child;
+    // We need to allocate a new name for the remainder
+    const short_name = try gpa.dupe(u8, remainder);
+    gpa.free(child.name); // free old dotted name
+    new_child.name = short_name;
+
+    // Check if remainder still has dots (multi-level, e.g. "Dec.abs")
+    if (std.mem.indexOfScalar(u8, remainder, '.')) |_| {
+        // Recursively place into sub-children
+        // Convert parent's children to an ArrayList temporarily
+        var children_list = std.ArrayList(DocModel.DocEntry).empty;
+        for (p.children) |c| {
+            try children_list.append(gpa, c);
+        }
+        gpa.free(p.children);
+
+        try reparentDottedChildInto(gpa, &children_list, new_child);
+
+        p.children = try children_list.toOwnedSlice(gpa);
+    } else {
+        // Simple case — just append to parent's children
+        var new_children = std.ArrayList(DocModel.DocEntry).empty;
+        for (p.children) |c| {
+            try new_children.append(gpa, c);
+        }
+        try new_children.append(gpa, new_child);
+        gpa.free(p.children);
+        p.children = try new_children.toOwnedSlice(gpa);
+    }
+}
+
+/// Like reparentDottedChild but operates on a children ArrayList (for nested levels).
+fn reparentDottedChildInto(
+    gpa: Allocator,
+    children_list: *std.ArrayList(DocModel.DocEntry),
+    child: DocModel.DocEntry,
+) !void {
+    const dot_idx = std.mem.indexOfScalar(u8, child.name, '.') orelse {
+        // Leaf — just append
+        try children_list.append(gpa, child);
+        return;
+    };
+
+    const parent_name = child.name[0..dot_idx];
+    const remainder = child.name[dot_idx + 1 ..];
+
+    // Find or create intermediate group
+    var parent: ?*DocModel.DocEntry = null;
+    for (children_list.items) |*entry| {
+        if (std.mem.eql(u8, entry.name, parent_name)) {
+            parent = entry;
+            break;
+        }
+    }
+
+    if (parent == null) {
+        const group_name = try gpa.dupe(u8, parent_name);
+        errdefer gpa.free(group_name);
+        const empty = try gpa.alloc(DocModel.DocEntry, 0);
+        errdefer gpa.free(empty);
+
+        try children_list.append(gpa, DocModel.DocEntry{
+            .name = group_name,
+            .kind = .nominal,
+            .type_signature = null,
+            .doc_comment = null,
+            .children = empty,
+        });
+        parent = &children_list.items[children_list.items.len - 1];
+    }
+
+    const p = parent.?;
+
+    // Shorten the child name
+    var new_child = child;
+    const short_name = try gpa.dupe(u8, remainder);
+    gpa.free(child.name);
+    new_child.name = short_name;
+
+    if (std.mem.indexOfScalar(u8, remainder, '.')) |_| {
+        // Still has dots — recurse deeper
+        var sub_children = std.ArrayList(DocModel.DocEntry).empty;
+        for (p.children) |c| {
+            try sub_children.append(gpa, c);
+        }
+        gpa.free(p.children);
+        try reparentDottedChildInto(gpa, &sub_children, new_child);
+        p.children = try sub_children.toOwnedSlice(gpa);
+    } else {
+        // Leaf — append to parent's children
+        var new_children = std.ArrayList(DocModel.DocEntry).empty;
+        for (p.children) |c| {
+            try new_children.append(gpa, c);
+        }
+        try new_children.append(gpa, new_child);
+        gpa.free(p.children);
+        p.children = try new_children.toOwnedSlice(gpa);
+    }
 }
 
 // --- Internal helpers ---

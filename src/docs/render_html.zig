@@ -180,6 +180,9 @@ fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, m
     try w.writeAll("    <main>\n");
     try w.writeAll("        <h1 class=\"module-name\">");
     try writeHtmlEscaped(w, mod.name);
+    if (mod.kind == .type_module) {
+        try w.writeAll(" <span class=\"module-kind-badge\">Type Module</span>");
+    }
     try w.writeAll("</h1>\n");
 
     // Module doc comment
@@ -280,24 +283,16 @@ fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
                 node.is_type = (entry.kind != .value);
                 node.entry = entry;
 
-                // Also add entry's children as nested nodes
+                // Also add entry's children as nested nodes,
+                // splitting dotted names into sub-trees
                 for (entry.children) |*child_entry| {
-                    const child_name = child_entry.name;
-                    const full_path = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ entry.name, child_name });
-                    const child_node = try SidebarNode.init(gpa, child_name, full_path, true);
-                    try node.children.append(gpa, child_node);
-                    child_node.is_leaf = true;
-                    child_node.is_type = (child_entry.kind != .value);
-                    child_node.entry = child_entry;
+                    try addChildToContentTree(gpa, node, entry.name, child_entry);
                 }
             }
 
             current = node;
         }
     }
-
-    // Sort children at each level alphabetically
-    sortSidebarNodeChildren(root);
 
     return root;
 }
@@ -370,15 +365,10 @@ fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
                 node.is_type = (entry.kind != .value);
                 node.entry = entry;
 
-                // Also add entry's children as nested nodes
+                // Also add entry's children as nested nodes,
+                // splitting dotted names into sub-trees
                 for (entry.children) |*child_entry| {
-                    const child_name = child_entry.name;
-                    const full_path = try std.fmt.allocPrint(gpa, "{s}.{s}", .{ entry.name, child_name });
-                    const child_node = try SidebarNode.init(gpa, child_name, full_path, true);
-                    try node.children.append(gpa, child_node);
-                    child_node.is_leaf = true;
-                    child_node.is_type = (child_entry.kind != .value);
-                    child_node.entry = child_entry;
+                    try addChildToContentTree(gpa, node, entry.name, child_entry);
                 }
             }
 
@@ -386,10 +376,74 @@ fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*Sideba
         }
     }
 
-    // Sort children at each level
-    sortSidebarNodeChildren(root);
-
     return root;
+}
+
+/// Add a child entry to the content tree, splitting its name on dots
+/// to create intermediate group nodes.
+fn addChildToContentTree(
+    gpa: Allocator,
+    parent_node: *SidebarNode,
+    parent_entry_name: []const u8,
+    child_entry: *const DocModel.DocEntry,
+) !void {
+    var current = parent_node;
+
+    // Split child name by dots
+    var child_parts = try std.ArrayList([]const u8).initCapacity(gpa, 8);
+    defer child_parts.deinit(gpa);
+
+    var start: usize = 0;
+    for (child_entry.name, 0..) |char, ci| {
+        if (char == '.') {
+            try child_parts.append(gpa, child_entry.name[start..ci]);
+            start = ci + 1;
+        }
+    }
+    try child_parts.append(gpa, child_entry.name[start..]);
+
+    // Build path through tree
+    var child_path = try std.ArrayList(u8).initCapacity(gpa, 256);
+    defer child_path.deinit(gpa);
+    try child_path.appendSlice(gpa, parent_entry_name);
+
+    for (child_parts.items, 0..) |part, idx| {
+        try child_path.append(gpa, '.');
+        try child_path.appendSlice(gpa, part);
+
+        const is_child_last = (idx == child_parts.items.len - 1);
+
+        // Find or create child node
+        var found: ?*SidebarNode = null;
+        for (current.children.items) |child| {
+            if (std.mem.eql(u8, child.name, part)) {
+                found = child;
+                break;
+            }
+        }
+
+        if (found == null) {
+            const fp = try gpa.dupe(u8, child_path.items);
+            const new_node = try SidebarNode.init(gpa, part, fp, true);
+            try current.children.append(gpa, new_node);
+            found = new_node;
+        }
+
+        const child_node = found.?;
+
+        if (is_child_last) {
+            child_node.is_leaf = true;
+            child_node.is_type = (child_entry.kind != .value);
+            child_node.entry = child_entry;
+
+            // Recursively add this entry's own children
+            for (child_entry.children) |*grandchild| {
+                try addChildToContentTree(gpa, child_node, child_path.items, grandchild);
+            }
+        }
+
+        current = child_node;
+    }
 }
 
 fn renderEntryTree(
@@ -453,10 +507,17 @@ fn renderEntryTree(
             try w.writeAll("        </div>\n");
         }
     } else if (node.children.items.len > 0) {
-        // Non-leaf node with children - recurse
+        // Non-leaf group node — render a group header and recurse at deeper depth
+        try w.writeAll("        <div class=\"entry-group entry-depth-");
+        try w.print("{d}", .{depth - 1});
+        try w.writeAll("\">\n");
+        try w.writeAll("            <div class=\"entry-group-header\">");
+        try writeHtmlEscaped(w, node.name);
+        try w.writeAll("</div>\n");
         for (node.children.items) |child| {
-            try renderEntryTree(w, ctx, child, depth);
+            try renderEntryTree(w, ctx, child, depth + 1);
         }
+        try w.writeAll("        </div>\n");
     }
 }
 
@@ -511,18 +572,32 @@ fn renderSidebarTree(
             }
             try w.writeAll("</div>\n");
         } else if (node.is_leaf) {
-            // Render as link
-            try w.writeAll("                        ");
-            for (0..depth - 1) |_| {
-                try w.writeAll("  ");
+            if (depth == 1 and node.is_type) {
+                // Top-level type with no children — render as a standalone
+                // group name (not an indented link) so it sits at the same
+                // visual level as sibling groups like Bool, List, etc.
+                try w.writeAll("                        ");
+                try w.writeAll("<a class=\"sidebar-group-link\" href=\"/");
+                try writeHtmlEscaped(w, module_name);
+                try w.writeAll("/#");
+                try writeHtmlEscaped(w, node.full_path);
+                try w.writeAll("\">");
+                try writeHtmlEscaped(w, node.name);
+                try w.writeAll("</a>\n");
+            } else {
+                // Render as link
+                try w.writeAll("                        ");
+                for (0..depth - 1) |_| {
+                    try w.writeAll("  ");
+                }
+                try w.writeAll("<a href=\"/");
+                try writeHtmlEscaped(w, module_name);
+                try w.writeAll("/#");
+                try writeHtmlEscaped(w, node.full_path);
+                try w.writeAll("\">");
+                try writeHtmlEscaped(w, node.name);
+                try w.writeAll("</a>\n");
             }
-            try w.writeAll("<a href=\"/");
-            try writeHtmlEscaped(w, module_name);
-            try w.writeAll("/#");
-            try writeHtmlEscaped(w, node.full_path);
-            try w.writeAll("\">");
-            try writeHtmlEscaped(w, node.name);
-            try w.writeAll("</a>\n");
         }
     } else {
         // Root node - just recurse
