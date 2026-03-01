@@ -1966,7 +1966,7 @@ pub fn canonicalizeFile(
 
     // Phase 0: Register module aliases and import indices early so they are available
     // during type declaration and associated block canonicalization (Phases 1a-1.7).
-    // Without this, qualified type references like `PartDef.Idx` inside associated blocks
+    // Without this, qualified type references inside associated blocks
     // would fail because the module alias isn't in scope yet.
     // NOTE: We only register aliases/indices here, NOT exposed items or conflict detection.
     // Full import processing happens in the second pass to preserve correct conflict detection.
