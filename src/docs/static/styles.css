@@ -329,7 +329,7 @@ main {
   like in one of the examples at https://www.roc-lang.org/builtins/Num#Dec */
   overflow-y: auto;
   display: grid;
-  --main-content-width: clamp(100px, calc(100% - 32px), 60ch);
+  --main-content-width: clamp(100px, calc(100% - 32px), 120ch);
   grid-template-columns: [main-start] minmax(16px,1fr) [main-content-start] var(--main-content-width) [main-content-end] minmax(16px,1fr) [main-end];
   grid-template-rows: auto;
   flex-direction: column;
@@ -544,6 +544,8 @@ footer p {
     font-weight: var(--weight-medium);
     font-size: var(--font-sm);
     cursor: pointer;
+    text-decoration: none;
+    color: inherit;
     display: inline-block;
     padding: 8px 16px;
     width: 100%;

@@ -510,6 +510,8 @@ fn renderEntryTree(
         // Non-leaf group node — render a group header and recurse at deeper depth
         try w.writeAll("        <div class=\"entry-group entry-depth-");
         try w.print("{d}", .{depth - 1});
+        try w.writeAll("\" id=\"");
+        try writeHtmlEscaped(w, node.full_path);
         try w.writeAll("\">\n");
         try w.writeAll("            <div class=\"entry-group-header\">");
         try writeHtmlEscaped(w, node.name);
@@ -547,9 +549,11 @@ fn renderSidebarTree(
             for (0..depth - 1) |_| {
                 try w.writeAll("  ");
             }
-            try w.writeAll("  <span class=\"sidebar-group-name\">");
+            try w.writeAll("  <a class=\"sidebar-group-name\" href=\"#");
+            try writeHtmlEscaped(w, node.full_path);
+            try w.writeAll("\">");
             try writeHtmlEscaped(w, node.name);
-            try w.writeAll("</span>\n");
+            try w.writeAll("</a>\n");
             try w.writeAll("                        ");
             for (0..depth - 1) |_| {
                 try w.writeAll("  ");
@@ -577,9 +581,7 @@ fn renderSidebarTree(
                 // group name (not an indented link) so it sits at the same
                 // visual level as sibling groups like Bool, List, etc.
                 try w.writeAll("                        ");
-                try w.writeAll("<a class=\"sidebar-group-link\" href=\"/");
-                try writeHtmlEscaped(w, module_name);
-                try w.writeAll("/#");
+                try w.writeAll("<a class=\"sidebar-group-link\" href=\"#");
                 try writeHtmlEscaped(w, node.full_path);
                 try w.writeAll("\">");
                 try writeHtmlEscaped(w, node.name);
@@ -590,9 +592,7 @@ fn renderSidebarTree(
                 for (0..depth - 1) |_| {
                     try w.writeAll("  ");
                 }
-                try w.writeAll("<a href=\"/");
-                try writeHtmlEscaped(w, module_name);
-                try w.writeAll("/#");
+                try w.writeAll("<a href=\"#");
                 try writeHtmlEscaped(w, node.full_path);
                 try w.writeAll("\">");
                 try writeHtmlEscaped(w, node.name);

@@ -29,11 +29,9 @@ const setupSidebarNav = () => {
       return;
     }
 
-    // Handle sidebar group name clicks
+    // Handle sidebar group name clicks — toggle expanded and navigate
     const groupName = e.target.closest(".sidebar-group-name");
     if (groupName) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
       const group = groupName.closest(".sidebar-group");
       if (group) {
         group.classList.toggle("expanded");
