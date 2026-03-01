@@ -3490,6 +3490,15 @@ fn rocBuild(ctx: *CliContext, args: cli_args.BuildArgs) !void {
         return;
     }
 
+    // Headerless apps use a simple builtin platform and cannot be compiled
+    if (readDefaultAppSource(ctx, args.path)) |source| {
+        ctx.gpa.free(source);
+        renderProblem(ctx.gpa, ctx.io.stderr(), .{
+            .build_not_supported_for_headerless = .{ .app_path = args.path },
+        });
+        return error.UnsupportedTarget;
+    }
+
     // Select build path based on backend
     switch (args.backend) {
         .dev => {

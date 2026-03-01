@@ -13235,10 +13235,10 @@ fn injectEchoPlatform(self: *Self) std.mem.Allocator.Error!void {
         _ = try self.env.types.fresh();
     }
 
-    // Build CIR type annotation: echo! : Str => Try({}, [..])
+    // Build CIR type annotation: echo! : Str => {}
     // This ensures the type checker properly resolves the type instead of setting it to `err`.
     // Note: Do NOT set the expression's type variable content directly here, as it conflicts
-    // with the annotation processing in the type checker (causes Str => () vs Str => Try mismatch).
+    // with the annotation processing in the type checker.
     const annotation_idx = try self.buildEchoTypeAnnotation(synthetic_region);
 
     // Create a pattern for the def binding
@@ -13259,12 +13259,11 @@ fn injectEchoPlatform(self: *Self) std.mem.Allocator.Error!void {
     _ = try self.scopeIntroduceInternal(self.env.gpa, .ident, echo_ident, pattern_idx, false, true);
 }
 
-/// Build the type annotation `Str => Try({}, [..])` for the echo! hosted function.
+/// Build the type annotation `Str => {}` for the echo! hosted function.
 /// Returns the Annotation.Idx to attach to the def.
 fn buildEchoTypeAnnotation(self: *Self, region: Region) std.mem.Allocator.Error!CIR.Annotation.Idx {
-    // Look up Str and Try from scope (they are auto-imported external_nominal bindings)
+    // Look up Str from scope (auto-imported external_nominal binding)
     const str_ident = try self.env.insertIdent(base.Ident.for_text("Str"));
-    const try_ident = try self.env.insertIdent(base.Ident.for_text("Try"));
 
     // Build Str type annotation via scope lookup
     const str_anno_idx = try self.buildExternalTypeLookupAnno(str_ident, region);
@@ -13274,34 +13273,13 @@ fn buildEchoTypeAnnotation(self: *Self, region: Region) std.mem.Allocator.Error!
     const empty_record_fields = try self.env.store.annoRecordFieldSpanFrom(empty_record_fields_top);
     const empty_record_idx = try self.env.addTypeAnno(.{ .record = .{ .fields = empty_record_fields, .ext = null } }, region);
 
-    // Build [..] (open tag union with no tags) type annotation
-    const underscore_idx = try self.env.addTypeAnno(.{ .underscore = {} }, region);
-    const empty_tags_scratch_top = self.env.store.scratchTypeAnnoTop();
-    const empty_tags = try self.env.store.typeAnnoSpanFrom(empty_tags_scratch_top);
-    const open_tag_union_idx = try self.env.addTypeAnno(.{ .tag_union = .{
-        .tags = empty_tags,
-        .ext = underscore_idx,
-    } }, region);
-
-    // Build Try({}, [..]) type application
-    const try_base = try self.getExternalTypeBase(try_ident);
-    const try_args_scratch_top = self.env.store.scratchTypeAnnoTop();
-    try self.env.store.addScratchTypeAnno(empty_record_idx);
-    try self.env.store.addScratchTypeAnno(open_tag_union_idx);
-    const try_args_span = try self.env.store.typeAnnoSpanFrom(try_args_scratch_top);
-    const try_apply_idx = try self.env.addTypeAnno(.{ .apply = .{
-        .name = try_ident,
-        .base = try_base,
-        .args = try_args_span,
-    } }, region);
-
-    // Build Str => Try({}, [..]) function type annotation
+    // Build Str => {} function type annotation
     const fn_args_scratch_top = self.env.store.scratchTypeAnnoTop();
     try self.env.store.addScratchTypeAnno(str_anno_idx);
     const fn_args_span = try self.env.store.typeAnnoSpanFrom(fn_args_scratch_top);
     const func_anno_idx = try self.env.addTypeAnno(.{ .@"fn" = .{
         .args = fn_args_span,
-        .ret = try_apply_idx,
+        .ret = empty_record_idx,
         .effectful = true,
     } }, region);
 
