@@ -12,31 +12,19 @@ const DocType = DocModel.DocType;
 // Static assets embedded at compile time
 const embedded_css = @embedFile("static/styles.css");
 const embedded_js = @embedFile("static/search.js");
-const embedded_font = @embedFile("static/RocMono.woff2");
-
-const font_face_css =
-    \\@font-face {
-    \\    font-family: 'RocMono';
-    \\    src: url('RocMono.woff2') format('woff2');
-    \\    font-weight: normal;
-    \\    font-style: normal;
-    \\}
-    \\
-    \\
-;
 
 const Writer = *std.Io.Writer;
 
 /// Tree node for sidebar hierarchy
 const SidebarNode = struct {
-    name: []const u8,          // The name component at this level
-    full_path: []const u8,     // Full qualified name (allocated)
-    is_type: bool,             // Is this a type definition?
-    is_leaf: bool,             // Is this a leaf entry?
-    entry: ?*const DocModel.DocEntry,  // Reference to the actual entry (if leaf)
+    name: []const u8, // The name component at this level
+    full_path: []const u8, // Full qualified name (allocated)
+    is_type: bool, // Is this a type definition?
+    is_leaf: bool, // Is this a leaf entry?
+    entry: ?*const DocModel.DocEntry, // Reference to the actual entry (if leaf)
     children: std.ArrayList(*SidebarNode),
     allocator: Allocator,
-    owns_full_path: bool,      // Whether we own the full_path allocation
+    owns_full_path: bool, // Whether we own the full_path allocation
 
     fn init(gpa: Allocator, name: []const u8, full_path: []const u8, owns_full_path: bool) !*SidebarNode {
         const node = try gpa.create(SidebarNode);
@@ -91,8 +79,6 @@ const RenderContext = struct {
     }
 };
 
-// ── Public entry point ──────────────────────────────────────────────
-
 /// Generate the complete HTML documentation site from PackageDocs.
 /// Creates directories and writes all files under `output_dir_path`.
 pub fn renderPackageDocs(
@@ -128,22 +114,10 @@ pub fn renderPackageDocs(
     ctx.current_module_entries = null;
 }
 
-// ── Static assets ───────────────────────────────────────────────────
-
 fn writeStaticAssets(dir: std.fs.Dir) !void {
-    // CSS with @font-face prepended
-    {
-        const file = try dir.createFile("styles.css", .{});
-        defer file.close();
-        try file.writeAll(font_face_css);
-        try file.writeAll(embedded_css);
-    }
-
+    try dir.writeFile(.{ .sub_path = "styles.css", .data = embedded_css });
     try dir.writeFile(.{ .sub_path = "search.js", .data = embedded_js });
-    try dir.writeFile(.{ .sub_path = "RocMono.woff2", .data = embedded_font });
 }
-
-// ── Package index page ──────────────────────────────────────────────
 
 fn writePackageIndex(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir) !void {
     const file = try dir.createFile("index.html", .{});
@@ -181,8 +155,6 @@ fn writePackageIndex(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir)
     try writeBodyClose(w);
     try bw.interface.flush();
 }
-
-// ── Module page ─────────────────────────────────────────────────────
 
 fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, mod: *const DocModel.ModuleDocs) !void {
     // Create module subdirectory
@@ -228,8 +200,6 @@ fn writeModulePage(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir, m
     try bw.interface.flush();
 }
 
-// ── HTML skeleton helpers ───────────────────────────────────────────
-
 fn writeHtmlHead(w: Writer, title: []const u8, base: []const u8) !void {
     try w.writeAll("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n");
     try w.writeAll("    <meta charset=\"utf-8\">\n");
@@ -257,8 +227,6 @@ fn writeBodyClose(w: Writer) !void {
 fn writeFooter(w: Writer) !void {
     try w.writeAll("        <footer><p>Made by people who like to make nice things.</p></footer>\n");
 }
-
-// ── Sidebar ─────────────────────────────────────────────────────────
 
 fn buildSidebarTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
     const root = try SidebarNode.init(gpa, "", "", false);
@@ -349,8 +317,6 @@ fn lessThanSidebarNode(_: void, a: *SidebarNode, b: *SidebarNode) bool {
     // Then sort alphabetically
     return std.mem.order(u8, a.name, b.name) == .lt;
 }
-
-// ── Content tree building for hierarchical main content ──
 
 fn buildContentTree(gpa: Allocator, entries: []const DocModel.DocEntry) !*SidebarNode {
     const root = try SidebarNode.init(gpa, "", "", false);
@@ -642,57 +608,6 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try w.writeAll("    </nav>\n");
 }
 
-// ── Entry rendering ─────────────────────────────────────────────────
-
-fn renderEntry(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry) !void {
-    try w.writeAll("        <section>\n");
-
-    // Heading with anchor
-    // Determine the anchor ID for this entry
-    // If entry.name already starts with current module, don't add it again
-    const anchor_id = if (ctx.current_module) |mod|
-        if (std.mem.startsWith(u8, entry.name, mod) and entry.name.len > mod.len and entry.name[mod.len] == '.')
-            entry.name  // Already qualified
-        else
-            entry.name  // Use as-is (or could be a nested entry)
-    else
-        entry.name;
-
-    try w.writeAll("            <h3 id=\"");
-    try writeHtmlEscaped(w, anchor_id);
-    try w.writeAll("\" class=\"entry-name\">");
-    try w.writeAll("<a href=\"#");
-    try writeHtmlEscaped(w, anchor_id);
-    try w.writeAll("\">&#128279;</a> ");
-
-    // Type signature
-    try w.writeAll("<code>");
-    try renderEntrySignature(w, ctx, entry);
-    try w.writeAll("</code>");
-
-    try w.writeAll("</h3>\n");
-
-    // Doc comment
-    if (entry.doc_comment) |doc| {
-        try w.writeAll("            <div class=\"entry-doc\">\n");
-        try renderDocComment(w, doc);
-        try w.writeAll("            </div>\n");
-    }
-
-    // Children (record fields for nominal types)
-    if (entry.children.len > 0) {
-        try w.writeAll("            <div class=\"entry-children\">\n");
-        for (entry.children) |*child| {
-            try w.writeAll("                <div class=\"entry-child\"><code>");
-            try writeHtmlEscaped(w, child.name);
-            try w.writeAll("</code></div>\n");
-        }
-        try w.writeAll("            </div>\n");
-    }
-
-    try w.writeAll("        </section>\n");
-}
-
 fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry) !void {
     try w.writeAll("<strong>");
 
@@ -727,8 +642,6 @@ fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocM
     }
 }
 
-// ── Doc comment rendering ───────────────────────────────────────────
-
 fn renderDocComment(w: Writer, doc: []const u8) !void {
     // Split on blank lines into <p> tags
     var start: usize = 0;
@@ -760,12 +673,10 @@ fn renderDocComment(w: Writer, doc: []const u8) !void {
     }
 }
 
-// ── DocType → HTML ──────────────────────────────────────────────────
-
 fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocType, needs_parens: bool) !void {
     switch (doc_type.*) {
         .type_ref => |ref| {
-            if (resolveTypeLink(ctx, ref.module_path, ref.type_name)) |_| {
+            if (resolveTypeLink(ctx, ref.module_path)) |_| {
                 try w.writeAll("<a href=\"");
                 try writeTypeLink(w, ctx, ref.module_path, ref.type_name);
                 try w.writeAll("\">");
@@ -883,8 +794,6 @@ fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocT
     }
 }
 
-// ── Link resolution ─────────────────────────────────────────────────
-
 /// Resolve a short type name to its full path within current module
 /// For example, "Dec" -> "Num.Dec"
 fn resolveTypeNameToFullPath(
@@ -922,9 +831,7 @@ fn resolveTypeNameToFullPath(
 fn resolveTypeLink(
     ctx: *const RenderContext,
     module_path: []const u8,
-    type_name: []const u8,
 ) ?bool {
-    _ = type_name;
     if (module_path.len == 0) return true; // anchor in current page
     if (ctx.current_module) |cur| {
         if (std.mem.eql(u8, module_path, cur)) return true;
@@ -983,8 +890,6 @@ fn writeTypeLink(
         try writeHtmlEscaped(w, full_type_name);
     }
 }
-
-// ── HTML escaping ───────────────────────────────────────────────────
 
 fn writeHtmlEscaped(w: Writer, text: []const u8) !void {
     for (text) |c| {

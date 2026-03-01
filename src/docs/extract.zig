@@ -12,14 +12,11 @@ const types_mod = @import("types").types;
 const DocModel = @import("DocModel.zig");
 
 const Allocator = std.mem.Allocator;
-const Region = base.Region;
 const Ident = base.Ident;
 
 const TypeStore = @import("types").Store;
 const Var = types_mod.Var;
-const Content = types_mod.Content;
 const FlatType = types_mod.FlatType;
-const Alias = types_mod.Alias;
 const NominalType = types_mod.NominalType;
 
 const DocType = DocModel.DocType;
@@ -36,7 +33,6 @@ pub fn extractModuleDocComment(gpa: Allocator, source: []const u8) !?[]const u8 
     var pos: usize = 0;
     while (pos < source.len) {
         // Skip leading whitespace on the line (spaces/tabs only)
-        const line_start = pos;
         while (pos < source.len and (source[pos] == ' ' or source[pos] == '\t')) {
             pos += 1;
         }
@@ -74,7 +70,6 @@ pub fn extractModuleDocComment(gpa: Allocator, source: []const u8) !?[]const u8 
             // Non-comment content reached
             break;
         }
-        _ = line_start;
     }
 
     if (lines.items.len == 0) return null;
@@ -221,7 +216,7 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 const doc_comment = try extractDocComment(gpa, source, region.start.offset);
                 errdefer if (doc_comment) |d| gpa.free(d);
 
-                const type_sig = try extractDeclTypeSig(gpa, module_env, decl.header, decl.anno, " : ");
+                const type_sig = try extractDeclTypeSig(gpa, module_env, decl.anno);
                 errdefer if (type_sig) |s| {
                     s.deinit(gpa);
                     gpa.destroy(s);
@@ -252,8 +247,7 @@ pub fn extractModuleDocs(gpa: Allocator, module_env: *const ModuleEnv, package_n
                 const doc_comment = try extractDocComment(gpa, source, region.start.offset);
                 errdefer if (doc_comment) |d| gpa.free(d);
 
-                const operator: []const u8 = if (decl.is_opaque) " :: " else " := ";
-                const type_sig = try extractDeclTypeSig(gpa, module_env, decl.header, decl.anno, operator);
+                const type_sig = try extractDeclTypeSig(gpa, module_env, decl.anno);
                 errdefer if (type_sig) |s| {
                     s.deinit(gpa);
                     gpa.destroy(s);
@@ -405,8 +399,7 @@ fn extractDefEntry(
                     const doc_comment = try extractDocComment(gpa, source, region.start.offset);
                     errdefer if (doc_comment) |d| gpa.free(d);
 
-                    const operator: []const u8 = if (decl.is_opaque) " :: " else " := ";
-                    const type_sig = try extractDeclTypeSig(gpa, module_env, decl.header, decl.anno, operator);
+                    const type_sig = try extractDeclTypeSig(gpa, module_env, decl.anno);
                     errdefer if (type_sig) |s| {
                         s.deinit(gpa);
                         gpa.destroy(s);
@@ -510,17 +503,12 @@ fn extractRecordChildren(
 
 /// Build a structured DocType for a type declaration (alias/nominal/opaque).
 ///
-/// Renders as a structured type wrapping the declaration header and backing type
-/// annotation. The `operator` is " : ", " := ", or " :: ".
+/// Extracts the backing type from a declaration's type annotation.
 fn extractDeclTypeSig(
     gpa: Allocator,
     module_env: *const ModuleEnv,
-    header_idx: CIR.TypeHeader.Idx,
     anno_idx: CIR.TypeAnno.Idx,
-    operator: []const u8,
 ) !?*const DocType {
-    _ = header_idx;
-    _ = operator;
     // Extract the backing type from the CIR annotation. The inferred type for a
     // nominal resolves to the nominal itself, so we use the annotation instead.
     // DocEntry.writeToSExpr generates the declaration prefix from kind + name.
@@ -577,8 +565,7 @@ fn extractTypeAnnoAsDocType(
 
                 var args = try gpa.alloc(*const DocType, args_slice.len);
                 errdefer {
-                    for (args, 0..) |arg, i| {
-                        _ = i;
+                    for (args) |arg| {
                         arg.deinit(gpa);
                         gpa.destroy(arg);
                     }
@@ -1451,7 +1438,7 @@ fn convertModuleKind(kind: ModuleEnv.ModuleKind) DocModel.ModuleKind {
 fn isInternalBuiltin(name: []const u8) bool {
     // Filter out unsafe/internal builtin functions
     return std.mem.endsWith(u8, name, "_unsafe") or
-           std.mem.endsWith(u8, name, "_lossy");
+        std.mem.endsWith(u8, name, "_lossy");
 }
 
 fn findEntryByName(entries: []const DocModel.DocEntry, name: []const u8) bool {
