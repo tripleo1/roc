@@ -3553,69 +3553,69 @@ test "min/max: U128.max" {
     , "340282366920938463463374607431768211455", .no_trace);
 }
 
-// test "min/max: I128.min" {
-//     try runExpectStr(
-//         \\I128.min(5, 3).to_str()
-//     , "3", .no_trace);
+test "min/max: I128.min" {
+    try runExpectStr(
+        \\I128.min(5, 3).to_str()
+    , "3", .no_trace);
 
-//     try runExpectStr(
-//         \\I128.min(-3, -1).to_str()
-//     , "-3", .no_trace);
+    try runExpectStr(
+        \\I128.min(-3, -1).to_str()
+    , "-3", .no_trace);
 
-//     try runExpectStr(
-//         \\I128.min(170141183460469231731687303715884105727, -170141183460469231731687303715884105728).to_str()
-//     , "-170141183460469231731687303715884105728", .no_trace);
-// }
+    try runExpectStr(
+        \\I128.min(170141183460469231731687303715884105727, -170141183460469231731687303715884105728).to_str()
+    , "-170141183460469231731687303715884105728", .no_trace);
+}
 
-// test "min/max: I128.max" {
-//     try runExpectStr(
-//         \\I128.max(5, 3).to_str()
-//     , "5", .no_trace);
+test "min/max: I128.max" {
+    try runExpectStr(
+        \\I128.max(5, 3).to_str()
+    , "5", .no_trace);
 
-//     try runExpectStr(
-//         \\I128.max(-3, -1).to_str()
-//     , "-1", .no_trace);
+    try runExpectStr(
+        \\I128.max(-3, -1).to_str()
+    , "-1", .no_trace);
 
-//     try runExpectStr(
-//         \\I128.max(170141183460469231731687303715884105727, -170141183460469231731687303715884105728).to_str()
-//     , "170141183460469231731687303715884105727", .no_trace);
-// }
+    try runExpectStr(
+        \\I128.max(170141183460469231731687303715884105727, -170141183460469231731687303715884105728).to_str()
+    , "170141183460469231731687303715884105727", .no_trace);
+}
 
-// test "min/max: Dec.min" {
-//     try runExpectStr(
-//         \\Dec.min(5, 3).to_str()
-//     , "3.0", .no_trace);
+test "min/max: Dec.min" {
+    try runExpectStr(
+        \\Dec.min(5, 3).to_str()
+    , "3.0", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.min(-3, -1).to_str()
-//     , "-3.0", .no_trace);
+    try runExpectStr(
+        \\Dec.min(-3, -1).to_str()
+    , "-3.0", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.min(5.5, 3.5).to_str()
-//     , "3.5", .no_trace);
+    try runExpectStr(
+        \\Dec.min(5.5, 3.5).to_str()
+    , "3.5", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.min(170141183460469231731.687303715884105727, -170141183460469231731.687303715884105728).to_str()
-//     , "-170141183460469231731.687303715884105728", .no_trace);
-// }
+    try runExpectStr(
+        \\Dec.min(170141183460469231731.687303715884105727, -170141183460469231731.687303715884105728).to_str()
+    , "-170141183460469231731.687303715884105728", .no_trace);
+}
 
-// test "min/max: Dec.max" {
-//     try runExpectStr(
-//         \\Dec.max(5, 3).to_str()
-//     , "5.0", .no_trace);
+test "min/max: Dec.max" {
+    try runExpectStr(
+        \\Dec.max(5, 3).to_str()
+    , "5.0", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.max(-3, -1).to_str()
-//     , "-1.0", .no_trace);
+    try runExpectStr(
+        \\Dec.max(-3, -1).to_str()
+    , "-1.0", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.max(5.5, 3.5).to_str()
-//     , "5.5", .no_trace);
+    try runExpectStr(
+        \\Dec.max(5.5, 3.5).to_str()
+    , "5.5", .no_trace);
 
-//     try runExpectStr(
-//         \\Dec.max(170141183460469231731.687303715884105727, -170141183460469231731.687303715884105728).to_str()
-//     , "170141183460469231731.687303715884105727", .no_trace);
-// }
+    try runExpectStr(
+        \\Dec.max(170141183460469231731.687303715884105727, -170141183460469231731.687303715884105728).to_str()
+    , "170141183460469231731.687303715884105727", .no_trace);
+}
 
 test "min/max: F32.min" {
     try runExpectStr(
