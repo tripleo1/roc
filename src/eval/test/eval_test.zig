@@ -3632,7 +3632,7 @@ test "min/max: F32.min" {
 
     try runExpectStr(
         \\F32.min(3.40282347e38, -3.40282347e38).to_str()
-    , "-3.40282347e38", .no_trace);
+    , "-3.4028235e38", .no_trace);
 }
 
 test "min/max: F32.max" {
@@ -3650,7 +3650,7 @@ test "min/max: F32.max" {
 
     try runExpectStr(
         \\F32.max(3.40282347e38, -3.40282347e38).to_str()
-    , "3.40282347e38", .no_trace);
+    , "3.4028235e38", .no_trace);
 }
 
 // test "min/max: F64.min" {
