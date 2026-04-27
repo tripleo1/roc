@@ -1368,11 +1368,9 @@ Builtin :: [].{
 			## ```
 			is_lte : U8, U8 -> Bool
 
-			## Obtains the greater between two [U8] values
+			## Returns the greater of two [U8] values.
 			## ```roc
 			## expect U8.max(5, 3) == 5
-			##
-			## expect U8.max(2, 3) == 3
 			## ```
 			max : U8, U8 -> U8
 			max = |a, b|
@@ -1381,11 +1379,9 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [U8] values
+			## Returns the smaller of two [U8] values.
 			## ```roc
 			## expect U8.min(5, 3) == 3
-			##
-			## expect U8.min(2, 3) == 2
 			## ```
 			min : U8, U8 -> U8
 			min = |a, b|
@@ -1668,11 +1664,11 @@ Builtin :: [].{
 			## ```
 			is_lte : I8, I8 -> Bool
 
-			## Obtains the greater between two [I8] values
+			## Returns the greater of two [I8] values.
 			## ```roc
 			## expect I8.max(5, 3) == 5
 			##
-			## expect I8.max(2, 3) == 3
+			## expect I8.max(-3, -1) == -1
 			## ```
 			max : I8, I8 -> I8
 			max = |a, b|
@@ -1681,11 +1677,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [I8] values
+			## Returns the smaller of two [I8] values.
 			## ```roc
 			## expect I8.min(5, 3) == 3
 			##
-			## expect I8.min(2, 3) == 2
+			## expect I8.min(-3, -1) == -3
 			## ```
 			min : I8, I8 -> I8
 			min = |a, b|
@@ -2054,11 +2050,9 @@ Builtin :: [].{
 			## ```
 			is_lte : U16, U16 -> Bool
 
-			## Obtains the greater between two [U16] values
+			## Returns the greater of two [U16] values.
 			## ```roc
 			## expect U16.max(5, 3) == 5
-			##
-			## expect U16.max(2, 3) == 3
 			## ```
 			max : U16, U16 -> U16
 			max = |a, b|
@@ -2067,11 +2061,9 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [U16] values
+			## Returns the smaller of two [U16] values.
 			## ```roc
 			## expect U16.min(5, 3) == 3
-			##
-			## expect U16.min(2, 3) == 2
 			## ```
 			min : U16, U16 -> U16
 			min = |a, b|
@@ -2392,11 +2384,11 @@ Builtin :: [].{
 			## ```
 			is_lte : I16, I16 -> Bool
 
-			## Obtains the greater between two [I16] values
+			## Returns the greater of two [I16] values.
 			## ```roc
 			## expect I16.max(5, 3) == 5
 			##
-			## expect I16.max(2, 3) == 3
+			## expect I16.max(-3, -1) == -1
 			## ```
 			max : I16, I16 -> I16
 			max = |a, b|
@@ -2405,11 +2397,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [I16] values
+			## Returns the smaller of two [I16] values.
 			## ```roc
 			## expect I16.min(5, 3) == 3
 			##
-			## expect I16.min(2, 3) == 2
+			## expect I16.min(-3, -1) == -3
 			## ```
 			min : I16, I16 -> I16
 			min = |a, b|
@@ -2795,11 +2787,9 @@ Builtin :: [].{
 			## ```
 			is_lte : U32, U32 -> Bool
 
-			## Obtains the greater between two [U32] values
+			## Returns the greater of two [U32] values.
 			## ```roc
 			## expect U32.max(5, 3) == 5
-			##
-			## expect U32.max(2, 3) == 3
 			## ```
 			max : U32, U32 -> U32
 			max = |a, b|
@@ -2808,11 +2798,9 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [U32] values
+			## Returns the smaller of two [U32] values.
 			## ```roc
 			## expect U32.min(5, 3) == 3
-			##
-			## expect U32.min(2, 3) == 2
 			## ```
 			min : U32, U32 -> U32
 			min = |a, b|
@@ -3171,11 +3159,11 @@ Builtin :: [].{
 			## ```
 			is_lte : I32, I32 -> Bool
 
-			## Obtains the greater between two [I32] values
+			## Returns the greater of two [I32] values.
 			## ```roc
 			## expect I32.max(5, 3) == 5
 			##
-			## expect I32.max(2, 3) == 3
+			## expect I32.max(-3, -1) == -1
 			## ```
 			max : I32, I32 -> I32
 			max = |a, b|
@@ -3184,11 +3172,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [I32] values
+			## Returns the smaller of two [I32] values.
 			## ```roc
 			## expect I32.min(5, 3) == 3
 			##
-			## expect I32.min(2, 3) == 2
+			## expect I32.min(-3, -1) == -3
 			## ```
 			min : I32, I32 -> I32
 			min = |a, b|
@@ -3593,11 +3581,9 @@ Builtin :: [].{
 			## ```
 			is_lte : U64, U64 -> Bool
 
-			## Obtains the greater between two [U64] values
+			## Returns the greater of two [U64] values.
 			## ```roc
 			## expect U64.max(5, 3) == 5
-			##
-			## expect U64.max(2, 3) == 3
 			## ```
 			max : U64, U64 -> U64
 			max = |a, b|
@@ -3606,11 +3592,9 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [U64] values
+			## Returns the smaller of two [U64] values.
 			## ```roc
 			## expect U64.min(5, 3) == 3
-			##
-			## expect U64.min(2, 3) == 2
 			## ```
 			min : U64, U64 -> U64
 			min = |a, b|
@@ -4008,11 +3992,11 @@ Builtin :: [].{
 			## ```
 			is_lte : I64, I64 -> Bool
 
-			## Obtains the greater between two [I64] values
+			## Returns the greater of two [I64] values.
 			## ```roc
 			## expect I64.max(5, 3) == 5
 			##
-			## expect I64.max(2, 3) == 3
+			## expect I64.max(-3, -1) == -1
 			## ```
 			max : I64, I64 -> I64
 			max = |a, b|
@@ -4021,11 +4005,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [I64] values
+			## Returns the smaller of two [I64] values.
 			## ```roc
 			## expect I64.min(5, 3) == 3
 			##
-			## expect I64.min(2, 3) == 2
+			## expect I64.min(-3, -1) == -3
 			## ```
 			min : I64, I64 -> I64
 			min = |a, b|
@@ -4447,11 +4431,9 @@ Builtin :: [].{
 			## ```
 			is_lte : U128, U128 -> Bool
 
-			## Obtains the greater between two [U128] values
+			## Returns the greater of two [U128] values.
 			## ```roc
 			## expect U128.max(5, 3) == 5
-			##
-			## expect U128.max(2, 3) == 3
 			## ```
 			max : U128, U128 -> U128
 			max = |a, b|
@@ -4460,11 +4442,9 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [U128] values
+			## Returns the smaller of two [U128] values.
 			## ```roc
 			## expect U128.min(5, 3) == 3
-			##
-			## expect U128.min(2, 3) == 2
 			## ```
 			min : U128, U128 -> U128
 			min = |a, b|
@@ -4899,11 +4879,11 @@ Builtin :: [].{
 			## ```
 			is_lte : I128, I128 -> Bool
 
-			## Obtains the greater between two [I128] values
+			## Returns the greater of two [I128] values.
 			## ```roc
 			## expect I128.max(5, 3) == 5
 			##
-			## expect I128.max(2, 3) == 3
+			## expect I128.max(-3, -1) == -1
 			## ```
 			max : I128, I128 -> I128
 			max = |a, b|
@@ -4912,11 +4892,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [I128] values
+			## Returns the smaller of two [I128] values.
 			## ```roc
 			## expect I128.min(5, 3) == 3
 			##
-			## expect I128.min(2, 3) == 2
+			## expect I128.min(-3, -1) == -3
 			## ```
 			min : I128, I128 -> I128
 			min = |a, b|
@@ -5385,11 +5365,11 @@ Builtin :: [].{
 			## ```
 			is_lte : Dec, Dec -> Bool
 
-			## Obtains the greater between two [Dec] values
+			## Returns the greater of two [Dec] values.
 			## ```roc
 			## expect Dec.max(5, 3) == 5
 			##
-			## expect Dec.max(2, 3) == 3
+			## expect Dec.max(-3, -1) == -1
 			## ```
 			max : Dec, Dec -> Dec
 			max = |a, b|
@@ -5398,11 +5378,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [Dec] values
+			## Returns the smaller of two [Dec] values.
 			## ```roc
 			## expect Dec.min(5, 3) == 3
 			##
-			## expect Dec.min(2, 3) == 2
+			## expect Dec.min(-3, -1) == -3
 			## ```
 			min : Dec, Dec -> Dec
 			min = |a, b|
@@ -5880,11 +5860,11 @@ Builtin :: [].{
 			## ```
 			is_lte : F32, F32 -> Bool
 
-			## Obtains the greater between two [F32] values
+			## Returns the greater of two [F32] values.
 			## ```roc
 			## expect F32.max(5, 3) == 5
 			##
-			## expect F32.max(2, 3) == 3
+			## expect F32.max(-3, -1) == -1
 			## ```
 			max : F32, F32 -> F32
 			max = |a, b|
@@ -5893,11 +5873,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [F32] values
+			## Returns the smaller of two [F32] values.
 			## ```roc
 			## expect F32.min(5, 3) == 3
 			##
-			## expect F32.min(2, 3) == 2
+			## expect F32.min(-3, -1) == -3
 			## ```
 			min : F32, F32 -> F32
 			min = |a, b|
@@ -6329,11 +6309,11 @@ Builtin :: [].{
 			## ```
 			is_lte : F64, F64 -> Bool
 
-			## Obtains the greater between two [F64] values
+			## Returns the greater of two [F64] values.
 			## ```roc
 			## expect F64.max(5, 3) == 5
 			##
-			## expect F64.max(2, 3) == 3
+			## expect F64.max(-3, -1) == -1
 			## ```
 			max : F64, F64 -> F64
 			max = |a, b|
@@ -6342,11 +6322,11 @@ Builtin :: [].{
 				else
 					b
 
-			## Obtains the smaller between two [F64] values
+			## Returns the smaller of two [F64] values.
 			## ```roc
 			## expect F64.min(5, 3) == 3
 			##
-			## expect F64.min(2, 3) == 2
+			## expect F64.min(-3, -1) == -3
 			## ```
 			min : F64, F64 -> F64
 			min = |a, b|
