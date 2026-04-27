@@ -3617,65 +3617,41 @@ test "int conversion: U8.to_i16.to_i64" {
 //     , "170141183460469231731.687303715884105727", .no_trace);
 // }
 
-// test "min/max: F32.min" {
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.min(5, 3).to_str()
-//         , "3.0", .no_trace)
-//     );
+test "min/max: F32.min" {
+    try runExpectStr(
+        \\F32.min(5, 3).to_str()
+    , "3", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.min(-3, -1).to_str()
-//         , "-3.0", .no_trace)
-//     );
+    try runExpectStr(
+        \\F32.min(-3, -1).to_str()
+    , "-3", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.min(5.5, 3.5).to_str()
-//         , "3.5", .no_trace)
-//     );
+    try runExpectStr(
+        \\F32.min(5.5, 3.5).to_str()
+    , "3.5", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.min(3.40282347e38, -3.40282347e38).to_str()
-//         , "-3.40282347e38", .no_trace)
-//     );
-// }
+    try runExpectStr(
+        \\F32.min(3.40282347e38, -3.40282347e38).to_str()
+    , "-3.40282347e38", .no_trace);
+}
 
-// test "min/max: F32.max" {
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.max(5, 3).to_str()
-//         , "5.0", .no_trace),
-//     );
+test "min/max: F32.max" {
+    try runExpectStr(
+        \\F32.max(5, 3).to_str()
+    , "5", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.max(-3, -1).to_str()
-//         , "-1.0", .no_trace)
-//     );
+    try runExpectStr(
+        \\F32.max(-3, -1).to_str()
+    , "-1", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.max(5.5, 3.5).to_str()
-//         , "5.5", .no_trace)
-//     );
+    try runExpectStr(
+        \\F32.max(5.5, 3.5).to_str()
+    , "5.5", .no_trace);
 
-//     try testing.expectError(
-//         error.EvaluatorMismatch,
-//         runExpectStr(
-//             \\F32.max(3.40282347e38, -3.40282347e38).to_str()
-//         , "3.40282347e38", .no_trace)
-//     );
-// }
+    try runExpectStr(
+        \\F32.max(3.40282347e38, -3.40282347e38).to_str()
+    , "3.40282347e38", .no_trace);
+}
 
 // test "min/max: F64.min" {
 //     try runExpectStr(

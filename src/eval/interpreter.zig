@@ -13120,21 +13120,45 @@ pub const Interpreter = struct {
             const ct_var = can.ModuleEnv.varFrom(expr_idx);
             break :blk try self.translateTypeVar(self.env, ct_var);
         };
-        const layout_val = try self.getRuntimeLayout(layout_rt_var);
+        var layout_val = try self.getRuntimeLayout(layout_rt_var);
 
         // Check if the resolved type is flex/rigid (unconstrained).
         // If so, we need to give it a concrete F32 type for method dispatch to work.
         const resolved_rt = self.runtime_types.resolveVar(layout_rt_var);
         const is_flex_or_rigid = resolved_rt.desc.content == .flex or resolved_rt.desc.content == .rigid;
-        const final_rt_var = if (is_flex_or_rigid) blk: {
+        var final_rt_var = layout_rt_var;
+        if (is_flex_or_rigid) {
             const f32_content = try self.mkNumberTypeContentRuntime("F32");
-            break :blk try self.runtime_types.freshFromContent(f32_content);
-        } else layout_rt_var;
-
-        const value = try self.pushRaw(layout_val, 0, final_rt_var);
-        if (value.ptr) |ptr| {
-            builtins.utils.writeAs(f32, ptr, lit.value, @src());
+            final_rt_var = try self.runtime_types.freshFromContent(f32_content);
+            layout_val = try self.getRuntimeLayout(final_rt_var);
         }
+
+        // Dispatch on the layout's float precision so the slot size and the
+        // stored bytes always agree, even if a wider/narrower numeric type was
+        // unified onto this literal.
+        var value = try self.pushRaw(layout_val, 0, final_rt_var);
+        value.is_initialized = false;
+        switch (layout_val.tag) {
+            .scalar => switch (layout_val.data.scalar.tag) {
+                .frac => switch (layout_val.data.scalar.data.frac) {
+                    .f32 => {
+                        const ptr = builtins.utils.alignedPtrCast(*f32, value.ptr.?, @src());
+                        ptr.* = lit.value;
+                    },
+                    .f64 => {
+                        const ptr = builtins.utils.alignedPtrCast(*f64, value.ptr.?, @src());
+                        ptr.* = @floatCast(lit.value);
+                    },
+                    .dec => {
+                        const ptr = builtins.utils.alignedPtrCast(*RocDec, value.ptr.?, @src());
+                        ptr.* = RocDec.fromF64(@floatCast(lit.value)) orelse return error.TypeMismatch;
+                    },
+                },
+                else => return error.TypeMismatch,
+            },
+            else => return error.TypeMismatch,
+        }
+        value.is_initialized = true;
         return value;
     }
 
@@ -13149,21 +13173,47 @@ pub const Interpreter = struct {
             const ct_var = can.ModuleEnv.varFrom(expr_idx);
             break :blk try self.translateTypeVar(self.env, ct_var);
         };
-        const layout_val = try self.getRuntimeLayout(layout_rt_var);
+        var layout_val = try self.getRuntimeLayout(layout_rt_var);
 
         // Check if the resolved type is flex/rigid (unconstrained).
         // If so, we need to give it a concrete F64 type for method dispatch to work.
         const resolved_rt = self.runtime_types.resolveVar(layout_rt_var);
         const is_flex_or_rigid = resolved_rt.desc.content == .flex or resolved_rt.desc.content == .rigid;
-        const final_rt_var = if (is_flex_or_rigid) blk: {
+        var final_rt_var = layout_rt_var;
+        if (is_flex_or_rigid) {
             const f64_content = try self.mkNumberTypeContentRuntime("F64");
-            break :blk try self.runtime_types.freshFromContent(f64_content);
-        } else layout_rt_var;
-
-        const value = try self.pushRaw(layout_val, 0, final_rt_var);
-        if (value.ptr) |ptr| {
-            builtins.utils.writeAs(f64, ptr, lit.value, @src());
+            final_rt_var = try self.runtime_types.freshFromContent(f64_content);
+            layout_val = try self.getRuntimeLayout(final_rt_var);
         }
+
+        // The literal's value is f64 but the resolved layout may be F32 (when the
+        // literal was created from an unsuffixed source value too large for Dec
+        // and the surrounding context constrained the type to F32) or Dec.
+        // Dispatch on the layout's float precision so the slot size and stored
+        // bytes always agree.
+        var value = try self.pushRaw(layout_val, 0, final_rt_var);
+        value.is_initialized = false;
+        switch (layout_val.tag) {
+            .scalar => switch (layout_val.data.scalar.tag) {
+                .frac => switch (layout_val.data.scalar.data.frac) {
+                    .f32 => {
+                        const ptr = builtins.utils.alignedPtrCast(*f32, value.ptr.?, @src());
+                        ptr.* = @floatCast(lit.value);
+                    },
+                    .f64 => {
+                        const ptr = builtins.utils.alignedPtrCast(*f64, value.ptr.?, @src());
+                        ptr.* = lit.value;
+                    },
+                    .dec => {
+                        const ptr = builtins.utils.alignedPtrCast(*RocDec, value.ptr.?, @src());
+                        ptr.* = RocDec.fromF64(lit.value) orelse return error.TypeMismatch;
+                    },
+                },
+                else => return error.TypeMismatch,
+            },
+            else => return error.TypeMismatch,
+        }
+        value.is_initialized = true;
         return value;
     }
 
