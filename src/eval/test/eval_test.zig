@@ -3533,25 +3533,25 @@ test "min/max: I64.max" {
     , "9223372036854775807", .no_trace);
 }
 
-// test "min/max: U128.min" {
-//     try runExpectStr(
-//         \\U128.min(5, 3).to_str()
-//     , "3", .no_trace);
+test "min/max: U128.min" {
+    try runExpectStr(
+        \\U128.min(5, 3).to_str()
+    , "3", .no_trace);
 
-//     try runExpectStr(
-//         \\U128.min(340282366920938463463374607431768211455, 0).to_str()
-//     , "0", .no_trace);
-// }
+    try runExpectStr(
+        \\U128.min(340282366920938463463374607431768211455, 0).to_str()
+    , "0", .no_trace);
+}
 
-// test "min/max: U128.max" {
-//     try runExpectStr(
-//         \\U128.max(5, 3).to_str()
-//     , "5", .no_trace);
+test "min/max: U128.max" {
+    try runExpectStr(
+        \\U128.max(5, 3).to_str()
+    , "5", .no_trace);
 
-//     try runExpectStr(
-//         \\U128.max(340282366920938463463374607431768211455, 0).to_str()
-//     , "340282366920938463463374607431768211455", .no_trace);
-// }
+    try runExpectStr(
+        \\U128.max(340282366920938463463374607431768211455, 0).to_str()
+    , "340282366920938463463374607431768211455", .no_trace);
+}
 
 // test "min/max: I128.min" {
 //     try runExpectStr(

@@ -3038,7 +3038,8 @@ pub const Interpreter = struct {
                 const rhs = try self.extractNumericValue(args[1]);
                 const result: bool = switch (lhs) {
                     .int => |l| switch (rhs) {
-                        .int => |r| l > r,
+                        // Use u128-aware comparison so values > i128.max don't appear negative.
+                        .int => orderIntStackValues(args[0], args[1]) == .gt,
                         // Int vs Dec: convert Dec to Int for comparison
                         .dec => |r| l > r.toWholeInt(),
                         else => return error.TypeMismatch,
@@ -3067,7 +3068,7 @@ pub const Interpreter = struct {
                 const rhs = try self.extractNumericValue(args[1]);
                 const result: bool = switch (lhs) {
                     .int => |l| switch (rhs) {
-                        .int => |r| l >= r,
+                        .int => orderIntStackValues(args[0], args[1]) != .lt,
                         .dec => |r| l >= r.toWholeInt(),
                         else => return error.TypeMismatch,
                     },
@@ -3094,7 +3095,7 @@ pub const Interpreter = struct {
                 const rhs = try self.extractNumericValue(args[1]);
                 const result: bool = switch (lhs) {
                     .int => |l| switch (rhs) {
-                        .int => |r| l < r,
+                        .int => orderIntStackValues(args[0], args[1]) == .lt,
                         .dec => |r| l < r.toWholeInt(),
                         else => return error.TypeMismatch,
                     },
@@ -3121,7 +3122,7 @@ pub const Interpreter = struct {
                 const rhs = try self.extractNumericValue(args[1]);
                 const result: bool = switch (lhs) {
                     .int => |l| switch (rhs) {
-                        .int => |r| l <= r,
+                        .int => orderIntStackValues(args[0], args[1]) != .gt,
                         .dec => |r| l <= r.toWholeInt(),
                         else => return error.TypeMismatch,
                     },
@@ -5867,7 +5868,28 @@ pub const Interpreter = struct {
         };
     }
 
+    /// Order two integer StackValues, using unsigned comparison when either side is u128.
+    /// This is needed because asI128() bit-casts u128 values, so values > i128.max
+    /// would compare as negative under signed comparison.
+    fn orderIntStackValues(lhs: StackValue, rhs: StackValue) std.math.Order {
+        std.debug.assert(lhs.layout.tag == .scalar and lhs.layout.data.scalar.tag == .int);
+        std.debug.assert(rhs.layout.tag == .scalar and rhs.layout.data.scalar.tag == .int);
+        const lhs_prec = lhs.layout.data.scalar.data.int;
+        const rhs_prec = rhs.layout.data.scalar.data.int;
+        if (lhs_prec == .u128 or rhs_prec == .u128) {
+            return std.math.order(lhs.asU128(), rhs.asU128());
+        }
+        return std.math.order(lhs.asI128(), rhs.asI128());
+    }
+
     fn compareNumericScalars(self: *Interpreter, lhs: StackValue, rhs: StackValue) !std.math.Order {
+        // Handle int-vs-int with u128-aware comparison directly to avoid the i128 round-trip
+        // in extractNumericValue, which is lossy for u128 values > i128.max.
+        if (lhs.layout.tag == .scalar and rhs.layout.tag == .scalar and
+            lhs.layout.data.scalar.tag == .int and rhs.layout.data.scalar.tag == .int)
+        {
+            return orderIntStackValues(lhs, rhs);
+        }
         const lhs_value = try self.extractNumericValue(lhs);
         const rhs_value = try self.extractNumericValue(rhs);
         return self.orderNumericValues(lhs_value, rhs_value);
