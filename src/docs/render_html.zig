@@ -12,6 +12,7 @@ const DocType = DocModel.DocType;
 // Static assets embedded at compile time
 const embedded_css = @embedFile("static/styles.css");
 const embedded_js = @embedFile("static/search.js");
+const embedded_favicon = @embedFile("static/favicon.svg");
 
 const Writer = *std.Io.Writer;
 
@@ -131,6 +132,7 @@ pub fn renderPackageDocs(
 fn writeStaticAssets(dir: std.fs.Dir) !void {
     try dir.writeFile(.{ .sub_path = "styles.css", .data = embedded_css });
     try dir.writeFile(.{ .sub_path = "search.js", .data = embedded_js });
+    try dir.writeFile(.{ .sub_path = "favicon.svg", .data = embedded_favicon });
 }
 
 fn writePackageIndex(ctx: *const RenderContext, gpa: Allocator, dir: std.fs.Dir) !void {
@@ -248,6 +250,9 @@ fn writeHtmlHead(w: Writer, title: []const u8, base: []const u8) !void {
     try writeHtmlEscaped(w, title);
     try w.writeAll("</title>\n");
     try w.writeAll("    <meta name=\"viewport\" content=\"width=device-width\">\n");
+    try w.writeAll("    <link rel=\"icon\" type=\"image/svg+xml\" href=\"");
+    try w.writeAll(base);
+    try w.writeAll("favicon.svg\">\n");
     try w.writeAll("    <link rel=\"stylesheet\" href=\"");
     try w.writeAll(base);
     try w.writeAll("styles.css\">\n");
@@ -283,7 +288,7 @@ fn writeBodyClose(w: Writer) !void {
 
 const menu_toggle_svg =
     \\<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    \\    <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+    \\    <path d="M0 6h18v2H0V6zm0 5h18v2H0v-2zm0 5h18v2H0v-2z"/>
     \\</svg>
 ;
 
