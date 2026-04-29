@@ -99,10 +99,15 @@ table tr td {
   overflow: visible;
 }
 
+
 .entry-signature-code {
   background: none;
   font-size: inherit;
   flex: 1;
+}
+
+.sig-arrow {
+  white-space: nowrap;
 }
 
 /* Type definition block shown below heading for nominal types (e.g. Try := ...) */
@@ -116,7 +121,6 @@ table tr td {
   white-space: pre-wrap;
   font-size: var(--font-base);
   line-height: 1.5;
-  margin-left: 28px;
 }
 
 .entry-signature-code strong {
@@ -129,7 +133,7 @@ table tr td {
   color: var(--violet);
   text-decoration: none;
   user-select: none;
-  transition: visibility 2s;
+  transition: visibility 6s;
   position: absolute;
   left: -28px;
   display: flex;
@@ -162,6 +166,12 @@ table tr td {
 .entry h6:hover .entry-anchor {
   visibility: visible;
 }
+
+.entry-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
 
 .entry-group-header {
     color: var(--violet);
@@ -228,6 +238,8 @@ a {
 a:hover,
 a:hover code {
   text-decoration: underline;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 5px;
 }
 
 .pkg-and-logo {
@@ -381,13 +393,13 @@ footer {
   max-width: var(--main-content-max-width);
   font-size: var(--font-sm);
   box-sizing: border-box;
-  padding: 16px;
+  padding: 16px 0px 0px;
 }
 
 footer p {
   display: inline-block;
   margin-top: 0;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .sidebar-entry ul {
@@ -686,6 +698,7 @@ pre>code {
 .menu-toggle svg {
     height: 48px;
     width: 48px;
+    fill: var(--violet);
 }
 
 
@@ -711,7 +724,7 @@ pre>code {
 
 @media (prefers-color-scheme: light) {
     #module-search {
-        outline: 1px solid var(--gray);
+        border-color: hsl(262 50% 72%);
     }
 }
 
@@ -821,6 +834,10 @@ pre>code {
         overflow-x: hidden;
     }
 
+    html {
+        scroll-padding-top: var(--module-search-form-height);
+    }
+
     #sidebar-nav {
         left: calc(-1 * var(--sidebar-width));
         top: 0;
@@ -852,24 +869,52 @@ pre>code {
         grid-column-start: main-content-start;
         grid-column-end: main-content-end;
         position: fixed;
+        top: 0;
         left: 0;
         right: 0;
+        justify-content: flex-start;
+    }
+
+    #module-search-form:has(#module-search:focus) .menu-toggle {
+        max-width: 0;
+        margin-left: 0;
+        opacity: 0;
+    }
+
+    .entry-anchor {
+        display: none;
+    }
+
+    .entry-signature {
+        padding-left: 8px;
+        padding-right: 8px;
     }
 
     .menu-toggle {
-        display: inline-block;
-        margin-right: 8px;
+        display: block;
+        flex-shrink: 0;
+        max-width: 48px;
+        overflow: hidden;
+        margin-left: 16px;
         appearance: none;
         background-color: transparent;
         outline: none;
         border: none;
-        color: var(--text-color);
+        color: var(--violet);
         padding: 0;
+        cursor: pointer;
+        touch-action: manipulation;
+        transition: max-width 0.2s ease, margin-left 0.2s ease, opacity 0.2s ease;
     }
 
     .menu-toggle svg {
         height: 48px;
         width: 48px;
+    }
+
+    #module-search {
+        flex: 1;
+        width: auto;
     }
 
     .pkg-full-name {
@@ -888,7 +933,7 @@ pre>code {
     }
 
     .module-name {
-        font-size: 24px;
+        font-size: var(--font-2xl);
         margin-top: 8px;
         margin-bottom: 8px;
         /* Align with the left border of #module-search-form's input.
@@ -899,11 +944,9 @@ pre>code {
         text-overflow: ellipsis;
     }
 
-    /* Drop section's desktop 20px left padding on mobile so pre's natural
-       left edge equals main's content-start (x=18 from viewport). This lets
-       the pre rule below escape the page indentation with a single -18px. */
+    /* Reduce section's desktop 20px left padding on mobile. */
     section {
-        padding-left: 0;
+        padding-left: 7px;
     }
 
     /* Full-bleed code blocks: escape main's 18px horizontal padding so the
