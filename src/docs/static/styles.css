@@ -949,12 +949,10 @@ pre>code {
         padding-left: 7px;
     }
 
-    /* Full-bleed code blocks: escape main's 18px horizontal padding so the
-       block spans the full viewport width. Existing padding (8px 16px) keeps
-       the code text inset to x=16px, matching the h1 and search-box border. */
+    /* Full-bleed code blocks */
     pre {
-        margin-left: -18px;
-        margin-right: -18px;
+        margin-left: -24px;
+        margin-right: -24px;
     }
 
     main {
