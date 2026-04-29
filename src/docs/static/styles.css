@@ -24,6 +24,9 @@
   --module-search-height: 56px;
   --module-search-padding-height: 16px;
   --module-search-form-padding-width: 20px;
+  /* Total vertical space occupied by #module-search-form (input + form padding + margin-bottom).
+     Used both as scroll-padding-top on desktop (sticky form) and padding-top on mobile (fixed form). */
+  --module-search-form-height: calc(var(--module-search-height) + 32px);
   --sidebar-bg-color: hsl(from var(--violet-bg) h calc(s * 1.05) calc(l * 0.95));
 
   /* Type scale: 1.33x multiplier for clear hierarchy */
@@ -289,7 +292,7 @@ main {
   flex-direction: column;
   scrollbar-color: var(--violet) var(--body-bg-color);
   scrollbar-gutter: stable both-edges;
-  scroll-padding-top: calc(16px + 16px + 1lh + 16px + 16px);
+  scroll-padding-top: var(--module-search-form-height);
   align-content: start;
 }
 
@@ -895,7 +898,7 @@ pre>samp {
     main {
         padding: 18px;
         font-size: var(--font-base);
-        padding-top: calc(16px + 16px + 1lh + 16px);
+        padding-top: var(--module-search-form-height);
     }
 
     #sidebar-nav {
