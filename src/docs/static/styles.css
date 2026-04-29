@@ -645,7 +645,7 @@ pre {
   word-wrap: normal;
 }
 
-pre>samp {
+pre>code {
     overflow-x: auto;
     display: block;
     scrollbar-color: var(--violet) var(--code-bg);
@@ -841,7 +841,7 @@ pre>samp {
 
     main {
         display: block;
-        margin: 0 16px;
+        margin: 0;
         --main-content-width: minmax(calc(100% - 32px), 60ch);
     }
 
@@ -891,8 +891,27 @@ pre>samp {
         font-size: 24px;
         margin-top: 8px;
         margin-bottom: 8px;
+        /* Align with the left border of #module-search-form's input.
+           main now has no margin and padding-left: 18px, so content starts at x=18;
+           the fixed search form's input border sits at x=16 (form padding-left). */
+        margin-left: -2px;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    /* Drop section's desktop 20px left padding on mobile so pre's natural
+       left edge equals main's content-start (x=18 from viewport). This lets
+       the pre rule below escape the page indentation with a single -18px. */
+    section {
+        padding-left: 0;
+    }
+
+    /* Full-bleed code blocks: escape main's 18px horizontal padding so the
+       block spans the full viewport width. Existing padding (8px 16px) keeps
+       the code text inset to x=16px, matching the h1 and search-box border. */
+    pre {
+        margin-left: -18px;
+        margin-right: -18px;
     }
 
     main {
