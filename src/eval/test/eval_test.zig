@@ -4916,3 +4916,18 @@ test "issue 9342: passing lambda to function ignoring its parameter should not p
         \\}
     , 42, .no_trace);
 }
+
+test "dev: function returning U64 max value should not panic codegen" {
+    // Regression test: returning the maximum U64 value (18446744073709551615)
+    // from a function caused a LIR/codegen panic:
+    // "moveOneRegToReturn does not support loc=immediate_i128"
+    // The literal needs i128 to represent it, but the function return type
+    // is U64, and the codegen path didn't handle this case.
+    try runDevOnlyExpectStr(
+        \\{
+        \\    highest : () -> U64
+        \\    highest = || 18446744073709551615
+        \\    highest().to_str()
+        \\}
+    , "\"18446744073709551615\"");
+}
