@@ -12889,8 +12889,8 @@ pub fn LirCodeGen(comptime target: RocTarget) type {
 
         /// Convert callable values stored on stack to a concrete stack ValueLocation
         /// based on the expected return layout.
-        fn normalizeResultLocForLayout(_: *Self, loc: ValueLocation, _: layout.Idx) ValueLocation {
-            return loc;
+        fn normalizeResultLocForLayout(self: *Self, loc: ValueLocation, ret_layout: layout.Idx) ValueLocation {
+            return self.coerceImmediateToLayout(loc, ret_layout);
         }
 
         /// Normalize immediate literal representation to match the target layout.
