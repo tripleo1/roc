@@ -17,11 +17,11 @@ const runExpectBool = helpers.runExpectBool;
 // ============================================================================
 
 test "highest_lowest: U8.highest" {
-    try runExpectI64("U8.highest()", 255, .no_trace);
+    try runExpectI64("U8.highest", 255, .no_trace);
 }
 
 test "highest_lowest: U8.lowest" {
-    try runExpectI64("U8.lowest()", 0, .no_trace);
+    try runExpectI64("U8.lowest", 0, .no_trace);
 }
 
 test "highest_lowest: U8.from_str at highest boundary" {
@@ -41,11 +41,11 @@ test "highest_lowest: U8.from_str negative rejected" {
 // ============================================================================
 
 test "highest_lowest: I8.highest" {
-    try runExpectI64("I8.highest()", 127, .no_trace);
+    try runExpectI64("I8.highest", 127, .no_trace);
 }
 
 test "highest_lowest: I8.lowest" {
-    try runExpectI64("I8.lowest()", -128, .no_trace);
+    try runExpectI64("I8.lowest", -128, .no_trace);
 }
 
 test "highest_lowest: I8.from_str at highest boundary" {
@@ -69,11 +69,11 @@ test "highest_lowest: I8.from_str past lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: U16.highest" {
-    try runExpectI64("U16.highest()", 65535, .no_trace);
+    try runExpectI64("U16.highest", 65535, .no_trace);
 }
 
 test "highest_lowest: U16.lowest" {
-    try runExpectI64("U16.lowest()", 0, .no_trace);
+    try runExpectI64("U16.lowest", 0, .no_trace);
 }
 
 test "highest_lowest: U16.from_str at highest boundary" {
@@ -93,11 +93,11 @@ test "highest_lowest: U16.from_str negative rejected" {
 // ============================================================================
 
 test "highest_lowest: I16.highest" {
-    try runExpectI64("I16.highest()", 32767, .no_trace);
+    try runExpectI64("I16.highest", 32767, .no_trace);
 }
 
 test "highest_lowest: I16.lowest" {
-    try runExpectI64("I16.lowest()", -32768, .no_trace);
+    try runExpectI64("I16.lowest", -32768, .no_trace);
 }
 
 test "highest_lowest: I16.from_str at highest boundary" {
@@ -121,11 +121,11 @@ test "highest_lowest: I16.from_str past lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: U32.highest" {
-    try runExpectI64("U32.highest()", 4_294_967_295, .no_trace);
+    try runExpectI64("U32.highest", 4_294_967_295, .no_trace);
 }
 
 test "highest_lowest: U32.lowest" {
-    try runExpectI64("U32.lowest()", 0, .no_trace);
+    try runExpectI64("U32.lowest", 0, .no_trace);
 }
 
 test "highest_lowest: U32.from_str at highest boundary" {
@@ -145,11 +145,11 @@ test "highest_lowest: U32.from_str negative rejected" {
 // ============================================================================
 
 test "highest_lowest: I32.highest" {
-    try runExpectI64("I32.highest()", 2_147_483_647, .no_trace);
+    try runExpectI64("I32.highest", 2_147_483_647, .no_trace);
 }
 
 test "highest_lowest: I32.lowest" {
-    try runExpectI64("I32.lowest()", -2_147_483_648, .no_trace);
+    try runExpectI64("I32.lowest", -2_147_483_648, .no_trace);
 }
 
 test "highest_lowest: I32.from_str at highest boundary" {
@@ -173,11 +173,11 @@ test "highest_lowest: I32.from_str past lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: U64.highest" {
-    try runExpectI64("U64.highest()", 18_446_744_073_709_551_615, .no_trace);
+    try runExpectI64("U64.highest", 18_446_744_073_709_551_615, .no_trace);
 }
 
 test "highest_lowest: U64.lowest" {
-    try runExpectI64("U64.lowest()", 0, .no_trace);
+    try runExpectI64("U64.lowest", 0, .no_trace);
 }
 
 test "highest_lowest: U64.from_str at highest boundary" {
@@ -197,11 +197,11 @@ test "highest_lowest: U64.from_str negative rejected" {
 // ============================================================================
 
 test "highest_lowest: I64.highest" {
-    try runExpectI64("I64.highest()", 9_223_372_036_854_775_807, .no_trace);
+    try runExpectI64("I64.highest", 9_223_372_036_854_775_807, .no_trace);
 }
 
 test "highest_lowest: I64.lowest" {
-    try runExpectI64("I64.lowest()", -9_223_372_036_854_775_808, .no_trace);
+    try runExpectI64("I64.lowest", -9_223_372_036_854_775_808, .no_trace);
 }
 
 test "highest_lowest: I64.from_str at highest boundary" {
@@ -226,14 +226,14 @@ test "highest_lowest: I64.from_str past lowest boundary" {
 
 test "highest_lowest: U128.highest" {
     try runExpectBool(
-        "U128.to_str(U128.highest()) == \"340282366920938463463374607431768211455\"",
+        "U128.to_str(U128.highest) == \"340282366920938463463374607431768211455\"",
         true,
         .no_trace,
     );
 }
 
 test "highest_lowest: U128.lowest" {
-    try runExpectI64("U128.lowest()", 0, .no_trace);
+    try runExpectI64("U128.lowest", 0, .no_trace);
 }
 
 test "highest_lowest: U128.from_str at highest boundary" {
@@ -261,11 +261,11 @@ test "highest_lowest: U128.from_str negative rejected" {
 // ============================================================================
 
 test "highest_lowest: I128.highest" {
-    try runExpectI64("I128.highest()", std.math.maxInt(i128), .no_trace);
+    try runExpectI64("I128.highest", 170141183460469231731687303715884105727, .no_trace);
 }
 
 test "highest_lowest: I128.lowest" {
-    try runExpectI64("I128.lowest()", std.math.minInt(i128), .no_trace);
+    try runExpectI64("I128.lowest", -170141183460469231731687303715884105728, .no_trace);
 }
 
 test "highest_lowest: I128.from_str at highest boundary" {
@@ -306,11 +306,16 @@ test "highest_lowest: I128.from_str past lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: Dec.highest" {
-    try runExpectDec("Dec.highest()", std.math.maxInt(i128), .no_trace);
+    // Dec is i128-backed, scaled by 10^18.
+    // Dec.highest == 170141183460469231731.687303715884105727
+    // raw i128 storage == 170141183460469231731687303715884105727 (= 2^127 - 1)
+    try runExpectDec("Dec.highest", 170141183460469231731687303715884105727, .no_trace);
 }
 
 test "highest_lowest: Dec.lowest" {
-    try runExpectDec("Dec.lowest()", std.math.minInt(i128), .no_trace);
+    // Dec.lowest == -170141183460469231731.687303715884105728
+    // raw i128 storage == -170141183460469231731687303715884105728 (= -2^127)
+    try runExpectDec("Dec.lowest", -170141183460469231731687303715884105728, .no_trace);
 }
 
 test "highest_lowest: Dec.from_str at highest boundary" {
@@ -330,7 +335,7 @@ test "highest_lowest: Dec.from_str past highest boundary" {
 }
 
 // NOTE: `Dec.from_str("-170141183460469231731.687303715884105728")` SHOULD
-// succeed (that's exactly Dec.lowest()), but currently returns Err(BadNumStr)
+// succeed (that's exactly Dec.lowest), but currently returns Err(BadNumStr)
 // because the parser appears to parse the absolute value first and then
 // negate — overflowing because lowest's magnitude is one greater than highest.
 // This is a Dec.from_str bug, not a bound bug. Re-enable when fixed.
@@ -356,11 +361,11 @@ test "highest_lowest: Dec.from_str past lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: F32.highest" {
-    try runExpectF32("F32.highest()", std.math.floatMax(f32), .no_trace);
+    try runExpectF32("F32.highest", 3.40282347e38, .no_trace);
 }
 
 test "highest_lowest: F32.lowest" {
-    try runExpectF32("F32.lowest()", -std.math.floatMax(f32), .no_trace);
+    try runExpectF32("F32.lowest", -3.40282347e38, .no_trace);
 }
 
 test "highest_lowest: F32.from_str at highest boundary" {
@@ -376,11 +381,11 @@ test "highest_lowest: F32.from_str at lowest boundary" {
 // ============================================================================
 
 test "highest_lowest: F64.highest" {
-    try runExpectF64("F64.highest()", std.math.floatMax(f64), .no_trace);
+    try runExpectF64("F64.highest", 1.7976931348623157e308, .no_trace);
 }
 
 test "highest_lowest: F64.lowest" {
-    try runExpectF64("F64.lowest()", -std.math.floatMax(f64), .no_trace);
+    try runExpectF64("F64.lowest", -1.7976931348623157e308, .no_trace);
 }
 
 test "highest_lowest: F64.from_str at highest boundary" {
@@ -390,5 +395,3 @@ test "highest_lowest: F64.from_str at highest boundary" {
 test "highest_lowest: F64.from_str at lowest boundary" {
     try runExpectBool("F64.from_str(\"-1.7976931348623157e308\").is_ok()", true, .no_trace);
 }
-
-const std = @import("std");

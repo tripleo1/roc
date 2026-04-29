@@ -1312,19 +1312,19 @@ Builtin :: [].{
 			default : () -> U8
 			default = || 0
 
-			## Returns the highest value representable by a [U8], which is `255`.
+			## The highest value representable by a [U8], which is `255`.
 			## ```roc
-			## expect U8.highest() == 255
+			## expect U8.highest == 255
 			## ```
-			highest : () -> U8
-			highest = || 255
+			highest : U8
+			highest = 255
 
-			## Returns the lowest value representable by a [U8], which is `0`.
+			## The lowest value representable by a [U8], which is `0`.
 			## ```roc
-			## expect U8.lowest() == 0
+			## expect U8.lowest == 0
 			## ```
-			lowest : () -> U8
-			lowest = || 0
+			lowest : U8
+			lowest = 0
 
 			## Convert a [U8] to its decimal string representation.
 			## ```roc
@@ -1603,19 +1603,19 @@ Builtin :: [].{
 			default : () -> I8
 			default = || 0
 
-			## Returns the highest value representable by an [I8], which is `127`.
+			## The highest value representable by an [I8], which is `127`.
 			## ```roc
-			## expect I8.highest() == 127
+			## expect I8.highest == 127
 			## ```
-			highest : () -> I8
-			highest = || 127
+			highest : I8
+			highest = 127
 
-			## Returns the lowest value representable by an [I8], which is `-128`.
+			## The lowest value representable by an [I8], which is `-128`.
 			## ```roc
-			## expect I8.lowest() == -128
+			## expect I8.lowest == -128
 			## ```
-			lowest : () -> I8
-			lowest = || -128
+			lowest : I8
+			lowest = -128
 
 			## Convert an [I8] to its decimal string representation.
 			## ```roc
@@ -2023,19 +2023,19 @@ Builtin :: [].{
 			default : () -> U16
 			default = || 0
 
-			## Returns the highest value representable by a [U16], which is `65535`.
+			## The highest value representable by a [U16], which is `65535`.
 			## ```roc
-			## expect U16.highest() == 65535
+			## expect U16.highest == 65535
 			## ```
-			highest : () -> U16
-			highest = || 65535
+			highest : U16
+			highest = 65535
 
-			## Returns the lowest value representable by a [U16], which is `0`.
+			## The lowest value representable by a [U16], which is `0`.
 			## ```roc
-			## expect U16.lowest() == 0
+			## expect U16.lowest == 0
 			## ```
-			lowest : () -> U16
-			lowest = || 0
+			lowest : U16
+			lowest = 0
 
 			## Convert a [U16] to its decimal string representation.
 			## ```roc
@@ -2351,19 +2351,19 @@ Builtin :: [].{
 			default : () -> I16
 			default = || 0
 
-			## Returns the highest value representable by an [I16], which is `32767`.
+			## The highest value representable by an [I16], which is `32767`.
 			## ```roc
-			## expect I16.highest() == 32767
+			## expect I16.highest == 32767
 			## ```
-			highest : () -> I16
-			highest = || 32767
+			highest : I16
+			highest = 32767
 
-			## Returns the lowest value representable by an [I16], which is `-32768`.
+			## The lowest value representable by an [I16], which is `-32768`.
 			## ```roc
-			## expect I16.lowest() == -32768
+			## expect I16.lowest == -32768
 			## ```
-			lowest : () -> I16
-			lowest = || -32768
+			lowest : I16
+			lowest = -32768
 
 			## Convert an [I16] to its decimal string representation.
 			## ```roc
@@ -2788,19 +2788,19 @@ Builtin :: [].{
 			default : () -> U32
 			default = || 0
 
-			## Returns the highest value representable by a [U32], which is `4294967295`.
+			## The highest value representable by a [U32], which is `4294967295`.
 			## ```roc
-			## expect U32.highest() == 4294967295
+			## expect U32.highest == 4294967295
 			## ```
-			highest : () -> U32
-			highest = || 4294967295
+			highest : U32
+			highest = 4294967295
 
-			## Returns the lowest value representable by a [U32], which is `0`.
+			## The lowest value representable by a [U32], which is `0`.
 			## ```roc
-			## expect U32.lowest() == 0
+			## expect U32.lowest == 0
 			## ```
-			lowest : () -> U32
-			lowest = || 0
+			lowest : U32
+			lowest = 0
 
 			## Convert a [U32] to its decimal string representation.
 			## ```roc
@@ -3154,19 +3154,19 @@ Builtin :: [].{
 			default : () -> I32
 			default = || 0
 
-			## Returns the highest value representable by an [I32], which is `2147483647`.
+			## The highest value representable by an [I32], which is `2147483647`.
 			## ```roc
-			## expect I32.highest() == 2147483647
+			## expect I32.highest == 2147483647
 			## ```
-			highest : () -> I32
-			highest = || 2147483647
+			highest : I32
+			highest = 2147483647
 
-			## Returns the lowest value representable by an [I32], which is `-2147483648`.
+			## The lowest value representable by an [I32], which is `-2147483648`.
 			## ```roc
-			## expect I32.lowest() == -2147483648
+			## expect I32.lowest == -2147483648
 			## ```
-			lowest : () -> I32
-			lowest = || -2147483648
+			lowest : I32
+			lowest = -2147483648
 
 			## Convert an [I32] to its decimal string representation.
 			## ```roc
@@ -3610,20 +3610,20 @@ Builtin :: [].{
 			default : () -> U64
 			default = || 0
 
-			## Returns the highest value representable by a [U64], which is
+			## The highest value representable by a [U64], which is
 			## `18446744073709551615`.
 			## ```roc
-			## expect U64.highest() == 18446744073709551615
+			## expect U64.highest == 18446744073709551615
 			## ```
-			highest : () -> U64
-			highest = || 18446744073709551615
+			highest : U64
+			highest = 18446744073709551615
 
-			## Returns the lowest value representable by a [U64], which is `0`.
+			## The lowest value representable by a [U64], which is `0`.
 			## ```roc
-			## expect U64.lowest() == 0
+			## expect U64.lowest == 0
 			## ```
-			lowest : () -> U64
-			lowest = || 0
+			lowest : U64
+			lowest = 0
 
 			## Convert a [U64] to its decimal string representation.
 			## ```roc
@@ -4016,21 +4016,21 @@ Builtin :: [].{
 			default : () -> I64
 			default = || 0
 
-			## Returns the highest value representable by an [I64], which is
+			## The highest value representable by an [I64], which is
 			## `9223372036854775807`.
 			## ```roc
-			## expect I64.highest() == 9223372036854775807
+			## expect I64.highest == 9223372036854775807
 			## ```
-			highest : () -> I64
-			highest = || 9223372036854775807
+			highest : I64
+			highest = 9223372036854775807
 
-			## Returns the lowest value representable by an [I64], which is
+			## The lowest value representable by an [I64], which is
 			## `-9223372036854775808`.
 			## ```roc
-			## expect I64.lowest() == -9223372036854775808
+			## expect I64.lowest == -9223372036854775808
 			## ```
-			lowest : () -> I64
-			lowest = || -9223372036854775808
+			lowest : I64
+			lowest = -9223372036854775808
 
 			## Convert an [I64] to its decimal string representation.
 			## ```roc
@@ -4491,20 +4491,20 @@ Builtin :: [].{
 			default : () -> U128
 			default = || 0
 
-			## Returns the highest value representable by a [U128], which is
+			## The highest value representable by a [U128], which is
 			## `340282366920938463463374607431768211455`.
 			## ```roc
-			## expect U128.highest() == 340282366920938463463374607431768211455
+			## expect U128.highest == 340282366920938463463374607431768211455
 			## ```
-			highest : () -> U128
-			highest = || 340282366920938463463374607431768211455
+			highest : U128
+			highest = 340282366920938463463374607431768211455
 
-			## Returns the lowest value representable by a [U128], which is `0`.
+			## The lowest value representable by a [U128], which is `0`.
 			## ```roc
-			## expect U128.lowest() == 0
+			## expect U128.lowest == 0
 			## ```
-			lowest : () -> U128
-			lowest = || 0
+			lowest : U128
+			lowest = 0
 
 			## Convert a [U128] to its decimal string representation.
 			## ```roc
@@ -4934,21 +4934,21 @@ Builtin :: [].{
 			default : () -> I128
 			default = || 0
 
-			## Returns the highest value representable by an [I128], which is
+			## The highest value representable by an [I128], which is
 			## `170141183460469231731687303715884105727`.
 			## ```roc
-			## expect I128.highest() == 170141183460469231731687303715884105727
+			## expect I128.highest == 170141183460469231731687303715884105727
 			## ```
-			highest : () -> I128
-			highest = || 170141183460469231731687303715884105727
+			highest : I128
+			highest = 170141183460469231731687303715884105727
 
-			## Returns the lowest value representable by an [I128], which is
+			## The lowest value representable by an [I128], which is
 			## `-170141183460469231731687303715884105728`.
 			## ```roc
-			## expect I128.lowest() == -170141183460469231731687303715884105728
+			## expect I128.lowest == -170141183460469231731687303715884105728
 			## ```
-			lowest : () -> I128
-			lowest = || -170141183460469231731687303715884105728
+			lowest : I128
+			lowest = -170141183460469231731687303715884105728
 
 			## Convert an [I128] to its decimal string representation.
 			## ```roc
@@ -5436,21 +5436,21 @@ Builtin :: [].{
 			default : () -> Dec
 			default = || 0.0
 
-			## Returns the highest value representable by a [Dec], which is
+			## The highest value representable by a [Dec], which is
 			## `170141183460469231731.687303715884105727`.
 			## ```roc
-			## expect Dec.highest() == 170141183460469231731.687303715884105727
+			## expect Dec.highest == 170141183460469231731.687303715884105727
 			## ```
-			highest : () -> Dec
-			highest = || 170141183460469231731.687303715884105727
+			highest : Dec
+			highest = 170141183460469231731.687303715884105727
 
-			## Returns the lowest value representable by a [Dec], which is
+			## The lowest value representable by a [Dec], which is
 			## `-170141183460469231731.687303715884105728`.
 			## ```roc
-			## expect Dec.lowest() == -170141183460469231731.687303715884105728
+			## expect Dec.lowest == -170141183460469231731.687303715884105728
 			## ```
-			lowest : () -> Dec
-			lowest = || -170141183460469231731.687303715884105728
+			lowest : Dec
+			lowest = -170141183460469231731.687303715884105728
 
 			## Convert a [Dec] to its decimal string representation.
 			## ```roc
@@ -5946,21 +5946,21 @@ Builtin :: [].{
 			default : () -> F32
 			default = || 0.0
 
-			## Returns the highest finite value representable by an [F32], which is
+			## The highest finite value representable by an [F32], which is
 			## `3.40282347e38`.
 			## ```roc
-			## expect F32.highest() == 3.40282347e38
+			## expect F32.highest == 3.40282347e38
 			## ```
-			highest : () -> F32
-			highest = || 3.40282347e38
+			highest : F32
+			highest = 3.40282347e38
 
-			## Returns the lowest finite value representable by an [F32], which is
+			## The lowest finite value representable by an [F32], which is
 			## `-3.40282347e38`.
 			## ```roc
-			## expect F32.lowest() == -3.40282347e38
+			## expect F32.lowest == -3.40282347e38
 			## ```
-			lowest : () -> F32
-			lowest = || -3.40282347e38
+			lowest : F32
+			lowest = -3.40282347e38
 
 			## Convert an [F32] to its decimal string representation.
 			## ```roc
@@ -6411,21 +6411,21 @@ Builtin :: [].{
 			default : () -> F64
 			default = || 0.0
 
-			## Returns the highest finite value representable by an [F64], which is
+			## The highest finite value representable by an [F64], which is
 			## `1.7976931348623157e308`.
 			## ```roc
-			## expect F64.highest() == 1.7976931348623157e308
+			## expect F64.highest == 1.7976931348623157e308
 			## ```
-			highest : () -> F64
-			highest = || 1.7976931348623157e308
+			highest : F64
+			highest = 1.7976931348623157e308
 
-			## Returns the lowest finite value representable by an [F64], which is
+			## The lowest finite value representable by an [F64], which is
 			## `-1.7976931348623157e308`.
 			## ```roc
-			## expect F64.lowest() == -1.7976931348623157e308
+			## expect F64.lowest == -1.7976931348623157e308
 			## ```
-			lowest : () -> F64
-			lowest = || -1.7976931348623157e308
+			lowest : F64
+			lowest = -1.7976931348623157e308
 
 			## Convert an [F64] to its decimal string representation.
 			## ```roc
