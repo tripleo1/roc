@@ -334,19 +334,13 @@ test "highest_lowest: Dec.from_str past highest boundary" {
     );
 }
 
-// NOTE: `Dec.from_str("-170141183460469231731.687303715884105728")` SHOULD
-// succeed (that's exactly Dec.lowest), but currently returns Err(BadNumStr)
-// because the parser appears to parse the absolute value first and then
-// negate — overflowing because lowest's magnitude is one greater than highest.
-// This is a Dec.from_str bug, not a bound bug. Re-enable when fixed.
-//
-// test "highest_lowest: Dec.from_str at lowest boundary" {
-//     try runExpectBool(
-//         "Dec.from_str(\"-170141183460469231731.687303715884105728\").is_ok()",
-//         true,
-//         .no_trace,
-//     );
-// }
+test "highest_lowest: Dec.from_str at lowest boundary" {
+    try runExpectBool(
+        "Dec.from_str(\"-170141183460469231731.687303715884105728\").is_ok()",
+        true,
+        .no_trace,
+    );
+}
 
 test "highest_lowest: Dec.from_str past lowest boundary" {
     try runExpectBool(
