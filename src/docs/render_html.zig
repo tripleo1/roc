@@ -287,18 +287,18 @@ fn writeBodyClose(w: Writer) !void {
 }
 
 const menu_toggle_svg =
-    \\<svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    \\<svg viewBox="0 6 18 12" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     \\    <path d="M0 6h18v2H0V6zm0 5h18v2H0v-2zm0 5h18v2H0v-2z"/>
     \\</svg>
 ;
 
 fn writeMainOpen(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []const u8) !void {
     try w.writeAll("    <main>\n");
-    try w.writeAll("        <button class=\"menu-toggle\" aria-label=\"Toggle sidebar\">");
-    try w.writeAll(menu_toggle_svg);
-    try w.writeAll("</button>\n");
     try w.writeAll("        <form id=\"module-search-form\">\n");
     try w.writeAll("            <input type=\"search\" id=\"module-search\" placeholder=\"Search Documentation\" autocomplete=\"off\" />\n");
+    try w.writeAll("            <button class=\"menu-toggle\" type=\"button\" aria-label=\"Toggle sidebar\">");
+    try w.writeAll(menu_toggle_svg);
+    try w.writeAll("</button>\n");
     try w.writeAll("            <ul id=\"search-type-ahead\" class=\"hidden\">\n");
     try renderSearchEntries(w, ctx, gpa, base);
     try w.writeAll("            </ul>\n");
@@ -539,7 +539,11 @@ fn renderEntryTree(
                 try w.writeAll("\">");
                 try w.writeAll(link_svg_use);
                 try w.writeAll("</a> ");
+                try w.writeAll("<a href=\"#");
+                try writeHtmlEscaped(w, anchor_id);
+                try w.writeAll("\" class=\"entry-name-link\">");
                 try writeHtmlEscaped(w, node.name);
+                try w.writeAll("</a>");
                 try w.print("</h{d}>\n", .{heading_level});
 
                 // Nominal types also show their type definition below the heading
@@ -566,7 +570,7 @@ fn renderEntryTree(
                 try w.writeAll("</a>\n");
                 try writeIndent(w, base + 2);
                 try w.writeAll("<code class=\"entry-signature-code\">");
-                try renderEntrySignature(w, ctx, entry);
+                try renderEntrySignature(w, ctx, entry, anchor_id);
                 try w.writeAll("</code>\n");
                 try writeIndent(w, base + 1);
                 try w.writeAll("</div>\n");
@@ -875,9 +879,7 @@ fn renderSearchTree(
     }
 }
 
-fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry) !void {
-    try w.writeAll("<strong>");
-
+fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocModel.DocEntry, anchor_id: []const u8) !void {
     // Display only the identifier (last component) of the entry name
     // For "Builtin.Str.Utf8Problem.is_eq", display as "is_eq"
     const display_name = if (std.mem.lastIndexOfScalar(u8, entry.name, '.')) |idx|
@@ -885,8 +887,11 @@ fn renderEntrySignature(w: Writer, ctx: *const RenderContext, entry: *const DocM
     else
         entry.name;
 
+    try w.writeAll("<a href=\"#");
+    try writeHtmlEscaped(w, anchor_id);
+    try w.writeAll("\" class=\"entry-name-link\"><strong>");
     try writeHtmlEscaped(w, display_name);
-    try w.writeAll("</strong>");
+    try w.writeAll("</strong></a>");
 
     if (entry.type_signature) |sig| {
         switch (entry.kind) {
@@ -1236,9 +1241,9 @@ fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocT
                 try renderDocTypeHtml(w, ctx, arg, true);
             }
             if (func.effectful) {
-                try w.writeAll(" =&gt; ");
+                try w.writeAll("<span class=\"sig-arrow\"> =&gt; </span>");
             } else {
-                try w.writeAll(" -&gt; ");
+                try w.writeAll("<span class=\"sig-arrow\"> -&gt; </span>");
             }
             try renderDocTypeHtml(w, ctx, func.ret, false);
             if (needs_parens) try w.writeAll(")");
@@ -1325,39 +1330,6 @@ fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocT
     }
 }
 
-/// Resolve a short type name to its full path within current module
-/// For example, "Dec" -> "Num.Dec"
-fn resolveTypeNameToFullPath(
-    ctx: *const RenderContext,
-    type_name: []const u8,
-) ?[]const u8 {
-    // If it already has a dot, it's a full path
-    if (std.mem.indexOf(u8, type_name, ".") != null) {
-        return type_name;
-    }
-
-    // Search current module entries for a match
-    if (ctx.current_module_entries) |entries| {
-        for (entries) |*entry| {
-            // Check if entry.name ends with ".{type_name}"
-            // This handles cases like "Num.Dec" where type_name is "Dec"
-            if (std.mem.endsWith(u8, entry.name, type_name)) {
-                const dot_pos = entry.name.len - type_name.len;
-                if (dot_pos == 0) {
-                    // Exact match (top-level type like "Bool")
-                    return type_name;
-                } else if (dot_pos > 0 and entry.name[dot_pos - 1] == '.') {
-                    // Match after a dot (nested type like "Num.Dec")
-                    return entry.name;
-                }
-            }
-        }
-    }
-
-    // Default to original name if not found
-    return type_name;
-}
-
 /// Check whether a type reference is linkable.
 fn resolveTypeLink(
     ctx: *const RenderContext,
@@ -1378,7 +1350,6 @@ fn writeTypeLink(
     module_path: []const u8,
     type_name: []const u8,
 ) !void {
-    // Determine the target module
     const target_module = if (module_path.len > 0)
         module_path
     else if (ctx.current_module) |cur|
@@ -1393,33 +1364,33 @@ fn writeTypeLink(
         return;
     }
 
-    // Check if same module
     const is_same_module = if (ctx.current_module) |cur|
         std.mem.eql(u8, target_module, cur)
     else
         false;
 
-    // Resolve the full path for short names (e.g., "Dec" -> "Num.Dec")
-    const full_type_name = if (is_same_module)
-        resolveTypeNameToFullPath(ctx, type_name) orelse type_name
-    else
-        type_name;
+    // HTML anchors use module-qualified dotted paths (e.g. "Builtin.Str.Utf8Problem").
+    // The compiler may provide a bare type_name ("Str") or a partial path
+    // ("Str.Utf8Problem"); prepend the module name unless it's already there.
+    const already_qualified = std.mem.startsWith(u8, type_name, target_module) and
+        type_name.len > target_module.len and
+        type_name[target_module.len] == '.';
 
     if (is_same_module) {
-        // Same-page link with anchor to the entry's full_path
-        // The entry IDs are the type name path (e.g., "Num.Dec")
         try w.writeAll("#");
-        try writeHtmlEscaped(w, full_type_name);
     } else {
-        // Cross-module link with relative path
-        // If we're in a module page (current_module is set), use "../" prefix
         if (ctx.current_module) |_| {
             try w.writeAll("../");
         }
         try writeHtmlEscaped(w, target_module);
         try w.writeAll("/#");
-        try writeHtmlEscaped(w, full_type_name);
     }
+
+    if (!already_qualified) {
+        try writeHtmlEscaped(w, target_module);
+        try w.writeAll(".");
+    }
+    try writeHtmlEscaped(w, type_name);
 }
 
 fn writeHtmlEscaped(w: Writer, text: []const u8) !void {
