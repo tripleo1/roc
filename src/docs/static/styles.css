@@ -123,6 +123,12 @@ table tr td {
   line-height: 1.5;
 }
 
+/* Match the 28px left margin applied to entry headings (.entry h2-h6) so the
+   type definition aligns with the heading name above it. */
+.entry > .entry-type-def {
+  margin-left: 28px;
+}
+
 .entry-signature-code strong {
     color: var(--text-color);
     font-weight: var(--weight-semibold);
@@ -300,17 +306,19 @@ main {
   display: grid;
   --main-content-width: clamp(100px, calc(100% - 32px), 70ch);
   grid-template-columns: [main-start] minmax(16px,1fr) [main-content-start] var(--main-content-width) [main-content-end] minmax(16px,1fr) [main-end];
-  grid-template-rows: auto;
-  flex-direction: column;
+  grid-template-rows: auto 1fr auto;
   scrollbar-color: var(--violet) var(--body-bg-color);
   scrollbar-gutter: stable both-edges;
   scroll-padding-top: var(--module-search-form-height);
-  align-content: start;
 }
 
 main > * {
     grid-column-start: main-content-start;
     grid-column-end: main-content-end;
+}
+
+.main-content {
+    min-width: 0;
 }
 
 /* Module links on the package index page (/index.html) */
@@ -857,9 +865,15 @@ pre>code {
     }
 
     main {
-        display: block;
+        display: flex;
+        flex-direction: column;
         margin: 0;
+        min-height: 100dvh;
         --main-content-width: minmax(calc(100% - 32px), 60ch);
+    }
+
+    main > .main-content {
+        flex: 1;
     }
 
     #module-search-form {
@@ -947,6 +961,19 @@ pre>code {
     /* Reduce section's desktop 20px left padding on mobile. */
     section {
         padding-left: 7px;
+    }
+
+    /* Reduce desktop 28px left margins that reserve space for .entry-anchor
+       (which is hidden on mobile). Applies to entry headings, the type-def
+       block aligned with them, and the children container nested below. */
+    .entry h2,
+    .entry h3,
+    .entry h4,
+    .entry h5,
+    .entry h6,
+    .entry > .entry-type-def,
+    .entry-children-container {
+        margin-left: 8px;
     }
 
     /* Full-bleed code blocks */

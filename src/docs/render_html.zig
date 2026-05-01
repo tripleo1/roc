@@ -303,9 +303,11 @@ fn writeMainOpen(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try renderSearchEntries(w, ctx, gpa, base);
     try w.writeAll("            </ul>\n");
     try w.writeAll("        </form>\n");
+    try w.writeAll("        <div class=\"main-content\">\n");
 }
 
 fn writeFooter(w: Writer) !void {
+    try w.writeAll("        </div>\n");
     try w.writeAll("        <footer><p>Made by people who like to make nice things.</p></footer>\n");
 }
 
@@ -628,6 +630,7 @@ const roc_logo_svg =
 fn renderSidebarTree(
     w: Writer,
     module_name: []const u8,
+    module_link_prefix: []const u8,
     node: *SidebarNode,
     depth: usize,
 ) !void {
@@ -644,7 +647,9 @@ fn renderSidebarTree(
             for (0..depth - 1) |_| {
                 try w.writeAll("  ");
             }
-            try w.writeAll("  <a class=\"sidebar-type-name\" href=\"#");
+            try w.writeAll("  <a class=\"sidebar-type-name\" href=\"");
+            try w.writeAll(module_link_prefix);
+            try w.writeAll("#");
             try writeHtmlEscaped(w, node.full_path);
             try w.writeAll("\">");
             try writeHtmlEscaped(w, node.name);
@@ -657,7 +662,7 @@ fn renderSidebarTree(
 
             // Recurse for children
             for (node.children.items) |child| {
-                try renderSidebarTree(w, module_name, child, depth + 1);
+                try renderSidebarTree(w, module_name, module_link_prefix, child, depth + 1);
             }
 
             try w.writeAll("                        ");
@@ -678,7 +683,9 @@ fn renderSidebarTree(
                 try w.writeAll("                        ");
                 try w.writeAll("<li class=\"sidebar-type\">\n");
                 try w.writeAll("                        ");
-                try w.writeAll("  <a class=\"sidebar-type-name\" href=\"#");
+                try w.writeAll("  <a class=\"sidebar-type-name\" href=\"");
+                try w.writeAll(module_link_prefix);
+                try w.writeAll("#");
                 try writeHtmlEscaped(w, node.full_path);
                 try w.writeAll("\">");
                 try writeHtmlEscaped(w, node.name);
@@ -691,7 +698,9 @@ fn renderSidebarTree(
                 for (0..depth - 1) |_| {
                     try w.writeAll("  ");
                 }
-                try w.writeAll("<li><a href=\"#");
+                try w.writeAll("<li><a href=\"");
+                try w.writeAll(module_link_prefix);
+                try w.writeAll("#");
                 try writeHtmlEscaped(w, node.full_path);
                 try w.writeAll("\">");
                 try writeHtmlEscaped(w, node.name);
@@ -701,7 +710,7 @@ fn renderSidebarTree(
     } else {
         // Root node - just recurse
         for (node.children.items) |child| {
-            try renderSidebarTree(w, module_name, child, depth + 1);
+            try renderSidebarTree(w, module_name, module_link_prefix, child, depth + 1);
         }
     }
 }
@@ -710,6 +719,7 @@ fn renderSidebarEntries(
     w: Writer,
     gpa: std.mem.Allocator,
     module_name: []const u8,
+    module_link_prefix: []const u8,
     entries: []const DocModel.DocEntry,
     _depth: usize,
 ) !void {
@@ -718,7 +728,7 @@ fn renderSidebarEntries(
     const entry_tree = try buildEntryTree(gpa, entries, module_name);
     defer entry_tree.deinit(gpa);
 
-    try renderSidebarTree(w, module_name, entry_tree.root, 0);
+    try renderSidebarTree(w, module_name, module_link_prefix, entry_tree.root, 0);
 }
 
 fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []const u8) !void {
@@ -750,23 +760,35 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
         else
             false;
 
+        // Build the href prefix for entries inside this module so that
+        // clicking a sidebar entry from another module's page navigates to
+        // the correct module page (not just changes the fragment on the
+        // current page).
+        var module_link_prefix = std.ArrayList(u8){};
+        defer module_link_prefix.deinit(gpa);
+        if (ctx.single_module_at_root) {
+            if (base.len == 0) {
+                // Root index page for the single module — same-page anchors.
+            } else {
+                try module_link_prefix.appendSlice(gpa, base);
+            }
+        } else {
+            try module_link_prefix.appendSlice(gpa, base);
+            // module names contain only identifier characters, no escaping needed for href
+            try module_link_prefix.appendSlice(gpa, mod.name);
+            try module_link_prefix.append(gpa, '/');
+        }
+
         try w.writeAll("                <li class=\"sidebar-entry\">\n");
         try w.writeAll("                    <a class=\"sidebar-module-link");
         if (is_active) try w.writeAll(" active");
         try w.writeAll("\" data-module-name=\"");
         try writeHtmlEscaped(w, mod.name);
         try w.writeAll("\" href=\"");
-        if (ctx.single_module_at_root) {
-            // Single module rendered at root; link to root
-            if (base.len == 0) {
-                try w.writeAll(".");
-            } else {
-                try w.writeAll(base);
-            }
+        if (module_link_prefix.items.len == 0) {
+            try w.writeAll(".");
         } else {
-            try w.writeAll(base);
-            try writeHtmlEscaped(w, mod.name);
-            try w.writeAll("/");
+            try w.writeAll(module_link_prefix.items);
         }
         try w.writeAll("\">");
         try w.writeAll("<button class=\"entry-toggle\">&#9654;</button>");
@@ -776,7 +798,7 @@ fn renderSidebar(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
 
         // Sub-entries - grouped hierarchically
         try w.writeAll("                    <ul class=\"sidebar-sub-entries\">\n");
-        try renderSidebarEntries(w, gpa, mod.name, mod.entries, 0);
+        try renderSidebarEntries(w, gpa, mod.name, module_link_prefix.items, mod.entries, 0);
         try w.writeAll("                    </ul>\n");
         try w.writeAll("                </li>\n");
     }
