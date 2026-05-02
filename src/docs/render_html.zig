@@ -307,10 +307,13 @@ fn writeMainOpen(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try w.writeAll("    <main>\n");
     try w.writeAll("        <form id=\"module-search-form\">\n");
     try w.writeAll("            <input type=\"search\" id=\"module-search\" placeholder=\"Search Documentation\" autocomplete=\"off\" />\n");
-    try w.writeAll("            <noscript>\n");
-    try w.writeAll("                <style>#module-search { display: none; }</style>\n");
-    try w.writeAll("                <input type=\"search\" id=\"module-search-nojs\" placeholder=\"Enable JavaScript to search\" autocomplete=\"off\" disabled aria-label=\"Search requires JavaScript\" />\n");
-    try w.writeAll("            </noscript>\n");
+    // The no-JS input must be a sibling (not nested inside <noscript>) so it
+    // participates in the form's flex layout. With JS enabled it is hidden by
+    // default CSS; the <noscript><style> below swaps which input is visible
+    // when JS is disabled. Avoid putting layout-relevant elements inside
+    // <noscript> — Chrome can render them as literal text.
+    try w.writeAll("            <input type=\"search\" id=\"module-search-nojs\" placeholder=\"Enable JavaScript to search\" autocomplete=\"off\" disabled aria-label=\"Search requires JavaScript\" />\n");
+    try w.writeAll("            <noscript><style>#module-search{display:none}#module-search-nojs{display:block}</style></noscript>\n");
     try w.writeAll("            <button class=\"menu-toggle\" type=\"button\" aria-label=\"Toggle sidebar\">");
     try w.writeAll(menu_toggle_svg);
     try w.writeAll("</button>\n");
