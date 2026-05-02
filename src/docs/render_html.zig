@@ -53,6 +53,11 @@ const SidebarNode = struct {
     }
 };
 
+/// URL prefix for the published Builtin module documentation, used when the
+/// docs being generated reference builtin types but the Builtin module is not
+/// part of the package being documented.
+const builtins_docs_url_prefix = "https://roc-lang.org/builtins/main/#Builtin.";
+
 /// Context for rendering, shared across all pages.
 const RenderContext = struct {
     package_docs: *const DocModel.PackageDocs,
@@ -65,17 +70,23 @@ const RenderContext = struct {
     /// When true, renderDocTypeHtml emits plain <span> instead of <a> for type
     /// references. Used inside search entries to avoid invalid nested <a> tags.
     suppress_type_links: bool = false,
+    /// True when the package being documented is Builtin itself, so references
+    /// to builtin types stay local instead of pointing at roc-lang.org.
+    documenting_builtin: bool = false,
 
     fn init(package_docs: *const DocModel.PackageDocs, gpa: Allocator) RenderContext {
         var known = std.StringHashMapUnmanaged(void){};
+        var documenting_builtin = false;
         for (package_docs.modules) |mod| {
             known.put(gpa, mod.name, {}) catch {};
+            if (std.mem.eql(u8, mod.name, "Builtin")) documenting_builtin = true;
         }
         return .{
             .package_docs = package_docs,
             .known_modules = known,
             .current_module = null,
             .current_module_entries = null,
+            .documenting_builtin = documenting_builtin,
         };
     }
 
@@ -1372,6 +1383,15 @@ fn writeTypeLink(
     module_path: []const u8,
     type_name: []const u8,
 ) !void {
+    // An empty module_path comes from `resolveModulePathFromBase` for `.builtin`
+    // references (Str, List, Bool, etc). When we are not documenting Builtin
+    // itself, point at the published Builtin docs instead of a same-page anchor.
+    if (module_path.len == 0 and !ctx.documenting_builtin) {
+        try w.writeAll(builtins_docs_url_prefix);
+        try writeHtmlEscaped(w, type_name);
+        return;
+    }
+
     const target_module = if (module_path.len > 0)
         module_path
     else if (ctx.current_module) |cur|
