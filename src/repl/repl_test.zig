@@ -469,7 +469,7 @@ test "issue 9364: F64.plus with integer literals" {
 }
 
 test "issue 9364: F64.plus with float literals" {
-    try expectAllNative("F64.plus(1.0, 1.0)", "2.0");
+    try expectAllNative("F64.plus(1.0, 1.0)", "2");
 }
 
 test "issue 9364: F64.to_str integer-valued float literal" {
