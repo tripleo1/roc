@@ -53,6 +53,11 @@ const SidebarNode = struct {
     }
 };
 
+/// URL prefix for the published Builtin module documentation, used when the
+/// docs being generated reference builtin types but the Builtin module is not
+/// part of the package being documented.
+const builtins_docs_url_prefix = "https://roc-lang.org/builtins/main/#Builtin.";
+
 /// Context for rendering, shared across all pages.
 const RenderContext = struct {
     package_docs: *const DocModel.PackageDocs,
@@ -65,17 +70,23 @@ const RenderContext = struct {
     /// When true, renderDocTypeHtml emits plain <span> instead of <a> for type
     /// references. Used inside search entries to avoid invalid nested <a> tags.
     suppress_type_links: bool = false,
+    /// True when the package being documented is Builtin itself, so references
+    /// to builtin types stay local instead of pointing at roc-lang.org.
+    documenting_builtin: bool = false,
 
     fn init(package_docs: *const DocModel.PackageDocs, gpa: Allocator) RenderContext {
         var known = std.StringHashMapUnmanaged(void){};
+        var documenting_builtin = false;
         for (package_docs.modules) |mod| {
             known.put(gpa, mod.name, {}) catch {};
+            if (std.mem.eql(u8, mod.name, "Builtin")) documenting_builtin = true;
         }
         return .{
             .package_docs = package_docs,
             .known_modules = known,
             .current_module = null,
             .current_module_entries = null,
+            .documenting_builtin = documenting_builtin,
         };
     }
 
@@ -296,6 +307,13 @@ fn writeMainOpen(w: Writer, ctx: *const RenderContext, gpa: Allocator, base: []c
     try w.writeAll("    <main>\n");
     try w.writeAll("        <form id=\"module-search-form\">\n");
     try w.writeAll("            <input type=\"search\" id=\"module-search\" placeholder=\"Search Documentation\" autocomplete=\"off\" />\n");
+    // The no-JS input must be a sibling (not nested inside <noscript>) so it
+    // participates in the form's flex layout. With JS enabled it is hidden by
+    // default CSS; the <noscript><style> below swaps which input is visible
+    // when JS is disabled. Avoid putting layout-relevant elements inside
+    // <noscript> — Chrome can render them as literal text.
+    try w.writeAll("            <input type=\"search\" id=\"module-search-nojs\" placeholder=\"Enable JavaScript to search\" autocomplete=\"off\" disabled aria-label=\"Search requires JavaScript\" />\n");
+    try w.writeAll("            <noscript><style>#module-search{display:none}#module-search-nojs{display:block}</style></noscript>\n");
     try w.writeAll("            <button class=\"menu-toggle\" type=\"button\" aria-label=\"Toggle sidebar\">");
     try w.writeAll(menu_toggle_svg);
     try w.writeAll("</button>\n");
@@ -1372,6 +1390,15 @@ fn writeTypeLink(
     module_path: []const u8,
     type_name: []const u8,
 ) !void {
+    // An empty module_path comes from `resolveModulePathFromBase` for `.builtin`
+    // references (Str, List, Bool, etc). When we are not documenting Builtin
+    // itself, point at the published Builtin docs instead of a same-page anchor.
+    if (module_path.len == 0 and !ctx.documenting_builtin) {
+        try w.writeAll(builtins_docs_url_prefix);
+        try writeHtmlEscaped(w, type_name);
+        return;
+    }
+
     const target_module = if (module_path.len > 0)
         module_path
     else if (ctx.current_module) |cur|
