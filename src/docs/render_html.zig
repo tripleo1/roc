@@ -64,6 +64,14 @@ const RenderContext = struct {
     known_modules: std.StringHashMapUnmanaged(void),
     current_module: ?[]const u8,
     current_module_entries: ?[]const DocModel.DocEntry = null,
+    /// Maps a short type name (e.g. "U8", "Utf8Problem") to its module-relative
+    /// dotted path (e.g. "Num.U8", "Str.Utf8Problem") within `current_module`.
+    /// HTML anchors are built as `<module>.<relative_path>`, so without this
+    /// table a reference to `U8` inside Builtin would link to `#Builtin.U8` even
+    /// though the actual entry id is `#Builtin.Num.U8`. Type-name keys collide
+    /// only across different sub-namespaces with the same final segment; the
+    /// first-seen entry wins (matching source order).
+    current_module_anchors: std.StringHashMapUnmanaged([]const u8) = .empty,
     /// When true, the single module's page is rendered at the root (index.html),
     /// so links to the module should point to the root instead of a subdirectory.
     single_module_at_root: bool = false,
@@ -91,9 +99,92 @@ const RenderContext = struct {
     }
 
     fn deinit(self: *RenderContext, gpa: Allocator) void {
+        self.current_module_anchors.deinit(gpa);
         self.known_modules.deinit(gpa);
     }
+
+    /// Replace `current_module` and `current_module_entries`, then rebuild the
+    /// anchor map from the new module's entries. Anchor map keys and values
+    /// are slices into entry names owned by `PackageDocs`, so clearing the map
+    /// retains the storage but invalidates no memory we own.
+    fn enterModule(self: *RenderContext, gpa: Allocator, mod: *const DocModel.ModuleDocs) !void {
+        self.current_module = mod.name;
+        self.current_module_entries = mod.entries;
+        self.current_module_anchors.clearRetainingCapacity();
+        try populateAnchorMap(&self.current_module_anchors, gpa, mod.name, mod.entries);
+    }
+
+    fn leaveModule(self: *RenderContext) void {
+        self.current_module = null;
+        self.current_module_entries = null;
+        self.current_module_anchors.clearRetainingCapacity();
+    }
+
+    /// Look up the head segment of `name` in the anchor map. Returns the
+    /// remapped path (e.g. `Num.U8` for `U8`) when the head is mapped, or
+    /// null otherwise. The optional `tail` is the dotted suffix to append
+    /// after the remapped head (e.g. `.default`); callers handle writing it.
+    fn lookupAnchorHead(self: *const RenderContext, head: []const u8) ?[]const u8 {
+        return self.current_module_anchors.get(head);
+    }
 };
+
+/// Build the anchor map for a module by walking every entry name. The
+/// extractor produces flat entries whose `name` is the fully-qualified dotted
+/// path (e.g. `Builtin.Num.U8.default`); intermediate path components like
+/// `Num` and `U8` are not standalone entries but become group nodes in the
+/// rendered tree (so anchors `id="Builtin.Num.U8"` exist on the page). For
+/// each entry we walk its prefixes — minus the leaf component for value
+/// entries — and record `short_name → module_relative_path` so a reference to
+/// a bare `U8` can be linked to `Builtin.Num.U8`. Keys and values are slices
+/// into `entry.name`, which is owned by the PackageDocs and lives for the
+/// duration of rendering.
+fn populateAnchorMap(
+    map: *std.StringHashMapUnmanaged([]const u8),
+    gpa: Allocator,
+    module_name: []const u8,
+    entries: []const DocModel.DocEntry,
+) !void {
+    for (entries) |entry| {
+        // Skip the leading `<module_name>.` if present so the recorded path is
+        // module-relative (matching how anchors are written: `<module>.<rel>`).
+        var rel_start: usize = 0;
+        if (std.mem.startsWith(u8, entry.name, module_name) and
+            entry.name.len > module_name.len and
+            entry.name[module_name.len] == '.')
+        {
+            rel_start = module_name.len + 1;
+        }
+
+        // For value entries, the final dotted segment is the value's own name
+        // (e.g. `default` in `Builtin.Num.U8.default`) — exclude it so we only
+        // map type-like prefixes (`Num`, `Num.U8`).
+        var rel_end: usize = entry.name.len;
+        if (entry.kind == .value) {
+            const last_dot = std.mem.lastIndexOfScalar(u8, entry.name, '.') orelse continue;
+            if (last_dot < rel_start) continue;
+            rel_end = last_dot;
+        }
+
+        // Walk each `.`-separated prefix of the relative path.
+        var seg_start = rel_start;
+        while (seg_start < rel_end) {
+            const next_dot = std.mem.indexOfScalarPos(u8, entry.name[0..rel_end], seg_start, '.');
+            const seg_end = next_dot orelse rel_end;
+            const short_name = entry.name[seg_start..seg_end];
+            const prefix_path = entry.name[rel_start..seg_end];
+
+            const result = try map.getOrPut(gpa, short_name);
+            if (!result.found_existing) {
+                result.value_ptr.* = prefix_path;
+            }
+
+            seg_start = if (next_dot) |d| d + 1 else rel_end;
+        }
+
+        try populateAnchorMap(map, gpa, module_name, entry.children);
+    }
+}
 
 /// Generate the complete HTML documentation site from PackageDocs.
 /// Creates directories and writes all files under `output_dir_path`.
@@ -121,22 +212,18 @@ pub fn renderPackageDocs(
         // Single module: write module content directly to root index.html
         ctx.single_module_at_root = true;
         const mod = &package_docs.modules[0];
-        ctx.current_module = mod.name;
-        ctx.current_module_entries = mod.entries;
+        try ctx.enterModule(gpa, mod);
         try writeModulePageToDir(&ctx, gpa, output_dir, mod, "");
-        ctx.current_module = null;
-        ctx.current_module_entries = null;
+        ctx.leaveModule();
     } else {
         // Multiple modules: write package index and per-module pages
         try writePackageIndex(&ctx, gpa, output_dir);
 
         for (package_docs.modules) |*mod| {
-            ctx.current_module = mod.name;
-            ctx.current_module_entries = mod.entries;
+            try ctx.enterModule(gpa, mod);
             try writeModulePage(&ctx, gpa, output_dir, mod);
         }
-        ctx.current_module = null;
-        ctx.current_module_entries = null;
+        ctx.leaveModule();
     }
 }
 
@@ -1234,13 +1321,17 @@ fn writeDocRefHref(w: Writer, ctx: *const RenderContext, label: []const u8) !voi
     }
 
     // Not a known module — treat as a reference relative to the current
-    // module. Entry ids are `<module>.<label>`.
+    // module. Entry ids are `<module>.<label>`. Substitute the first segment
+    // through the anchor map so a label like `U8` resolves to `Num.U8` and
+    // `U8.default` resolves to `Num.U8.default`.
     try w.writeAll("#");
     if (ctx.current_module) |cur| {
         try writeHtmlEscaped(w, cur);
         try w.writeAll(".");
     }
-    try writeHtmlEscaped(w, label);
+    const resolved_head = ctx.lookupAnchorHead(head) orelse head;
+    try writeHtmlEscaped(w, resolved_head);
+    if (first_dot) |d| try writeHtmlEscaped(w, label[d..]);
 }
 
 fn renderDocTypeHtml(w: Writer, ctx: *const RenderContext, doc_type: *const DocType, needs_parens: bool) !void {
@@ -1418,12 +1509,23 @@ fn writeTypeLink(
     else
         false;
 
+    // The compiler reports types by their short name (e.g. "U8"), but the HTML
+    // anchor for a type nested under a sub-namespace is built from its full
+    // path within the module (e.g. "Builtin.Num.U8"). When linking inside the
+    // current module, look the head segment up in the anchor map so the link
+    // resolves to the actual entry id.
+    const first_dot = std.mem.indexOfScalar(u8, type_name, '.');
+    const head = if (first_dot) |d| type_name[0..d] else type_name;
+    const tail: []const u8 = if (first_dot) |d| type_name[d..] else "";
+    const remapped_head: ?[]const u8 = if (is_same_module) ctx.lookupAnchorHead(head) else null;
+    const effective_head = remapped_head orelse head;
+
     // HTML anchors use module-qualified dotted paths (e.g. "Builtin.Str.Utf8Problem").
     // The compiler may provide a bare type_name ("Str") or a partial path
     // ("Str.Utf8Problem"); prepend the module name unless it's already there.
-    const already_qualified = std.mem.startsWith(u8, type_name, target_module) and
-        type_name.len > target_module.len and
-        type_name[target_module.len] == '.';
+    const already_qualified = std.mem.startsWith(u8, effective_head, target_module) and
+        effective_head.len > target_module.len and
+        effective_head[target_module.len] == '.';
 
     if (is_same_module) {
         try w.writeAll("#");
@@ -1439,7 +1541,8 @@ fn writeTypeLink(
         try writeHtmlEscaped(w, target_module);
         try w.writeAll(".");
     }
-    try writeHtmlEscaped(w, type_name);
+    try writeHtmlEscaped(w, effective_head);
+    try writeHtmlEscaped(w, tail);
 }
 
 fn writeHtmlEscaped(w: Writer, text: []const u8) !void {
